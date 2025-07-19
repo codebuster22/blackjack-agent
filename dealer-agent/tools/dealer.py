@@ -1,4 +1,4 @@
-from typing import List, Tuple, Optional, Literal
+from typing import List, Tuple, Literal
 import random
 from enum import Enum
 from pydantic import BaseModel, Field
@@ -44,6 +44,7 @@ class GameState(BaseModel):
     player_hand: Hand = Field(default_factory=Hand)
     dealer_hand: Hand = Field(default_factory=Hand)
     bet: float = 0.0
+    chips: float = 100.0  # In-memory chips tracker
     history: List[dict] = Field(default_factory=list)
 
 # ----- Utility Functions -----
@@ -63,6 +64,27 @@ def drawCard(shoe: List[Card]) -> Tuple[Card, List[Card]]:
     """
     card = shoe.pop()
     return card, shoe
+
+# ----- Chips Management -----
+
+def placeBet(state: GameState, amount: float) -> GameState:
+    """
+    Deduct bet amount from chips and set current bet. Raises ValueError if insufficient chips.
+    """
+    if amount <= 0:
+        raise ValueError("Bet amount must be positive.")
+    if state.chips < amount:
+        raise ValueError("Insufficient chips to place bet.")
+    state.chips -= amount
+    state.bet = amount
+    return state
+
+def updateChips(state: GameState, payout: float) -> GameState:
+    """
+    Apply payout (positive or negative) to chips.
+    """
+    state.chips += payout
+    return state
 
 # ----- Evaluation -----
 
@@ -91,11 +113,10 @@ def evaluateHand(hand: Hand) -> HandEvaluation:
 
 # ----- Dealing -----
 
-def dealInitialHands(state: GameState, bet: float) -> GameState:
+def dealInitialHands(state: GameState) -> GameState:
     """
-    Deal two cards each to player and dealer.
+    Deal two cards each to player and dealer after bet placed.
     """
-    state.bet = bet
     for _ in range(2):
         card, state.shoe = drawCard(state.shoe)
         state.player_hand.cards.append(card)
@@ -131,23 +152,28 @@ def processDealerPlay(state: GameState) -> GameState:
 
 def settleBet(state: GameState) -> Tuple[float, Literal['win', 'loss', 'push']]:
     """
-    Compare player and dealer hands, compute payout.
+    Compare hands, compute payout relative to bet, but do not update chips.
+    Returns (payout, result).
     """
     player_eval = evaluateHand(state.player_hand)
     dealer_eval = evaluateHand(state.dealer_hand)
+    bet = state.bet
+    # Player bust
     if player_eval.is_bust:
-        return -state.bet, 'loss'
+        return -bet, 'loss'
+    # Dealer bust
     if dealer_eval.is_bust:
-        return state.bet, 'win'
+        return bet, 'win'
+    # Blackjack
     if player_eval.is_blackjack and not dealer_eval.is_blackjack:
-        return state.bet * 1.5, 'win'
+        return bet * 1.5, 'win'
     if dealer_eval.is_blackjack and not player_eval.is_blackjack:
-        return -state.bet, 'loss'
-    # neither bust nor blackjack
+        return -bet, 'loss'
+    # Compare totals
     if player_eval.total > dealer_eval.total:
-        return state.bet, 'win'
+        return bet, 'win'
     if player_eval.total < dealer_eval.total:
-        return -state.bet, 'loss'
+        return -bet, 'loss'
     return 0.0, 'push'
 
 # ----- Shoe Check & Reset -----
@@ -158,9 +184,10 @@ def checkShoeExhaustion(state: GameState, threshold: int = 20) -> bool:
     """
     return len(state.shoe) < threshold
 
+
 def resetForNextHand(state: GameState) -> GameState:
     """
-    Prepare for next hand: reshuffle if needed, clear hands.
+    Prepare for next hand: reshuffle if needed, clear hands, reset bet.
     """
     if checkShoeExhaustion(state):
         state.shoe = shuffleShoe()
@@ -169,14 +196,14 @@ def resetForNextHand(state: GameState) -> GameState:
     state.bet = 0.0
     return state
 
-# ----- Display & Prompt -----
+# ----- Display -----
 
 def displayState(state: GameState, revealDealerHole: bool = False) -> str:
     """
     Render human-readable game state.
     """
     p_eval = evaluateHand(state.player_hand)
-    lines = [f"Player Hand: {[f'{c.rank}{c.suit}' for c in state.player_hand.cards]} (Total: {p_eval.total})"]
+    lines = [f"Player Hand: {[f'{c.rank}{c.suit}' for c in state.player_hand.cards]} (Total: {p_eval.total}) | Chips: {state.chips}"]
     if revealDealerHole:
         d_eval = evaluateHand(state.dealer_hand)
         lines.append(f"Dealer Hand: {[f'{c.rank}{c.suit}' for c in state.dealer_hand.cards]} (Total: {d_eval.total})")
@@ -184,3 +211,5 @@ def displayState(state: GameState, revealDealerHole: bool = False) -> str:
         up = state.dealer_hand.cards[0]
         lines.append(f"Dealer Up-Card: {up.rank}{up.suit}")
     return '\n'.join(lines)
+
+# Note: I/O functions promptUser and logGame should be implemented in the agent layer.
