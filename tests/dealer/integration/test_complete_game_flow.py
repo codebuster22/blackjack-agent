@@ -87,7 +87,12 @@ class TestCompleteGameFlow:
             
             # Verify payout consistency
             if result == 'win':
-                assert payout == bet_amount
+                # Check if it's a blackjack (1.5x payout) or regular win (1x payout)
+                player_eval = evaluateHand(state.player_hand)
+                if player_eval.is_blackjack:
+                    assert payout == bet_amount * 1.5
+                else:
+                    assert payout == bet_amount
             elif result == 'loss':
                 assert payout == -bet_amount
             else:  # push
