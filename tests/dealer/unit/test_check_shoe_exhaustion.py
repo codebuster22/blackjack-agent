@@ -1,5 +1,5 @@
 import pytest
-from dealer_agent.tools.dealer import checkShoeExhaustion, GameState, shuffleShoe
+from dealer_agent.tools.dealer import checkShoeExhaustion, GameState, shuffleShoe, set_current_state
 
 
 class TestCheckShoeExhaustion:
@@ -13,10 +13,12 @@ class TestCheckShoeExhaustion:
         Why: Verify function correctly identifies when shoe has sufficient cards.
         """
         state = GameState(shoe=shuffleShoe()[:25])  # 25 cards, threshold is 20
+        set_current_state(state)
         
-        result = checkShoeExhaustion(state, threshold=20)
+        result = checkShoeExhaustion(threshold=20)
         
-        assert result is False
+        assert result["success"] is True
+        assert result["is_exhausted"] is False
     
     def test_below_threshold(self):
         """
@@ -26,10 +28,12 @@ class TestCheckShoeExhaustion:
         Why: Verify function correctly identifies when shoe needs reshuffling.
         """
         state = GameState(shoe=shuffleShoe()[:19])  # 19 cards, threshold is 20
+        set_current_state(state)
         
-        result = checkShoeExhaustion(state, threshold=20)
+        result = checkShoeExhaustion(threshold=20)
         
-        assert result is True
+        assert result["success"] is True
+        assert result["is_exhausted"] is True
     
     def test_exactly_at_threshold(self):
         """
@@ -39,7 +43,9 @@ class TestCheckShoeExhaustion:
         Why: Verify boundary condition is handled correctly.
         """
         state = GameState(shoe=shuffleShoe()[:20])  # 20 cards, threshold is 20
+        set_current_state(state)
         
-        result = checkShoeExhaustion(state, threshold=20)
+        result = checkShoeExhaustion(threshold=20)
         
-        assert result is False 
+        assert result["success"] is True
+        assert result["is_exhausted"] is False 

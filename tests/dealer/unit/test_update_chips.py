@@ -1,5 +1,5 @@
 import pytest
-from dealer_agent.tools.dealer import updateChips, GameState, shuffleShoe
+from dealer_agent.tools.dealer import updateChips, GameState, shuffleShoe, set_current_state
 
 
 class TestUpdateChips:
@@ -13,10 +13,12 @@ class TestUpdateChips:
         Why: Verify winning payouts correctly increase chip balance.
         """
         state = GameState(shoe=shuffleShoe(), chips=70.0)
+        set_current_state(state)
         
-        state = updateChips(state, 30.0)
+        result = updateChips(30.0)
         
-        assert state.chips == 100.0
+        assert result["success"] is True
+        assert result["chips"] == 100.0
     
     def test_negative_payout_loss(self):
         """
@@ -26,10 +28,12 @@ class TestUpdateChips:
         Why: Verify losing payouts correctly decrease chip balance.
         """
         state = GameState(shoe=shuffleShoe(), chips=100.0)
+        set_current_state(state)
         
-        state = updateChips(state, -25.0)
+        result = updateChips(-25.0)
         
-        assert state.chips == 75.0
+        assert result["success"] is True
+        assert result["chips"] == 75.0
     
     def test_zero_payout_push(self):
         """
@@ -39,10 +43,12 @@ class TestUpdateChips:
         Why: Verify push payouts don't change chip balance.
         """
         state = GameState(shoe=shuffleShoe(), chips=55.0)
+        set_current_state(state)
         
-        state = updateChips(state, 0.0)
+        result = updateChips(0.0)
         
-        assert state.chips == 55.0
+        assert result["success"] is True
+        assert result["chips"] == 55.0
     
     def test_large_positive_payout(self):
         """
@@ -52,10 +58,12 @@ class TestUpdateChips:
         Why: Verify large payouts are handled correctly.
         """
         state = GameState(shoe=shuffleShoe(), chips=10.0)
+        set_current_state(state)
         
-        state = updateChips(state, 1000.0)
+        result = updateChips(1000.0)
         
-        assert state.chips == 1010.0
+        assert result["success"] is True
+        assert result["chips"] == 1010.0
     
     def test_large_negative_payout(self):
         """
@@ -65,10 +73,12 @@ class TestUpdateChips:
         Why: Verify large losses are handled correctly.
         """
         state = GameState(shoe=shuffleShoe(), chips=1000.0)
+        set_current_state(state)
         
-        state = updateChips(state, -500.0)
+        result = updateChips(-500.0)
         
-        assert state.chips == 500.0
+        assert result["success"] is True
+        assert result["chips"] == 500.0
     
     def test_fractional_payout(self):
         """
@@ -78,7 +88,9 @@ class TestUpdateChips:
         Why: Verify fractional payouts are handled with proper precision.
         """
         state = GameState(shoe=shuffleShoe(), chips=100.5)
+        set_current_state(state)
         
-        state = updateChips(state, 25.75)
+        result = updateChips(25.75)
         
-        assert state.chips == 126.25 
+        assert result["success"] is True
+        assert result["chips"] == 126.25 

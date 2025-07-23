@@ -1,5 +1,5 @@
 import pytest
-from dealer_agent.tools.dealer import settleBet, GameState, Hand, Card, Suit, Rank, shuffleShoe
+from dealer_agent.tools.dealer import settleBet, GameState, Hand, Card, Suit, Rank, shuffleShoe, set_current_state
 
 
 class TestSettleBet:
@@ -25,11 +25,13 @@ class TestSettleBet:
                 Card(suit=Suit.hearts, rank=Rank.eight)
             ])
         )
+        set_current_state(state)
         
-        payout, result = settleBet(state)
+        result = settleBet()
         
-        assert payout == -100.0
-        assert result == 'loss'
+        assert result["success"] is True
+        assert result["payout"] == 0.0
+        assert result["result"] == 'loss'
     
     def test_dealer_bust(self):
         """
@@ -51,11 +53,13 @@ class TestSettleBet:
                 Card(suit=Suit.hearts, rank=Rank.four)
             ])
         )
+        set_current_state(state)
         
-        payout, result = settleBet(state)
+        result = settleBet()
         
-        assert payout == 50.0
-        assert result == 'win'
+        assert result["success"] is True
+        assert result["payout"] == 100.0
+        assert result["result"] == 'win'
     
     def test_player_blackjack(self):
         """
@@ -76,11 +80,13 @@ class TestSettleBet:
                 Card(suit=Suit.clubs, rank=Rank.seven)
             ])
         )
+        set_current_state(state)
         
-        payout, result = settleBet(state)
+        result = settleBet()
         
-        assert payout == 150.0  # 1.5 × 100
-        assert result == 'win'
+        assert result["success"] is True
+        assert result["payout"] == 250.0  # 1.5 × 100 + bet back
+        assert result["result"] == 'win'
     
     def test_dealer_blackjack(self):
         """
@@ -101,16 +107,18 @@ class TestSettleBet:
                 Card(suit=Suit.clubs, rank=Rank.queen)
             ])
         )
+        set_current_state(state)
         
-        payout, result = settleBet(state)
+        result = settleBet()
         
-        assert payout == -75.0
-        assert result == 'loss'
+        assert result["success"] is True
+        assert result["payout"] == 0.0
+        assert result["result"] == 'loss'
     
     def test_mutual_blackjack_push(self):
         """
         Test settlement when both player and dealer have blackjack.
-        Expected result: Payout = 0, result = 'push'.
+        Expected result: Payout = bet, result = 'push'.
         Mock values: Both hands are blackjack (A+K), bet = 200.
         Why: Verify push when both have blackjack.
         """
@@ -126,11 +134,13 @@ class TestSettleBet:
                 Card(suit=Suit.clubs, rank=Rank.king)
             ])
         )
+        set_current_state(state)
         
-        payout, result = settleBet(state)
+        result = settleBet()
         
-        assert payout == 0.0
-        assert result == 'push'
+        assert result["success"] is True
+        assert result["payout"] == 200.0
+        assert result["result"] == 'push'
     
     def test_higher_total_wins(self):
         """
@@ -151,16 +161,18 @@ class TestSettleBet:
                 Card(suit=Suit.clubs, rank=Rank.seven)
             ])
         )
+        set_current_state(state)
         
-        payout, result = settleBet(state)
+        result = settleBet()
         
-        assert payout == 60.0
-        assert result == 'win'
+        assert result["success"] is True
+        assert result["payout"] == 120.0
+        assert result["result"] == 'win'
     
     def test_lower_total_loses(self):
         """
         Test settlement when player has lower total than dealer.
-        Expected result: Player 16 vs Dealer 18 → -bet.
+        Expected result: Player 16 vs Dealer 18 → 0 (bet already lost).
         Mock values: Player total 16, dealer total 18, bet = 40.
         Why: Verify player loses when they have lower total.
         """
@@ -176,16 +188,18 @@ class TestSettleBet:
                 Card(suit=Suit.clubs, rank=Rank.eight)
             ])
         )
+        set_current_state(state)
         
-        payout, result = settleBet(state)
+        result = settleBet()
         
-        assert payout == -40.0
-        assert result == 'loss'
+        assert result["success"] is True
+        assert result["payout"] == 0.0
+        assert result["result"] == 'loss'
     
     def test_equal_total_push(self):
         """
         Test settlement when player and dealer have equal totals.
-        Expected result: Player 18 vs Dealer 18 → 0.
+        Expected result: Player 18 vs Dealer 18 → bet (get bet back).
         Mock values: Both totals 18, bet = 80.
         Why: Verify push when totals are equal.
         """
@@ -201,8 +215,10 @@ class TestSettleBet:
                 Card(suit=Suit.clubs, rank=Rank.eight)
             ])
         )
+        set_current_state(state)
         
-        payout, result = settleBet(state)
+        result = settleBet()
         
-        assert payout == 0.0
-        assert result == 'push' 
+        assert result["success"] is True
+        assert result["payout"] == 80.0
+        assert result["result"] == 'push' 

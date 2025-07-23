@@ -2,7 +2,7 @@ import pytest
 from dealer_agent.tools.dealer import (
     GameState, shuffleShoe, placeBet, dealInitialHands, 
     processPlayerAction, processDealerPlay, settleBet, updateChips, 
-    resetForNextHand, displayState, evaluateHand
+    resetForNextHand, displayState, evaluateHand, set_current_state, get_current_state
 )
 
 
@@ -18,6 +18,7 @@ class TestCompleteGameFlow:
         """
         # Initialize game state
         state = GameState(shoe=shuffleShoe(), chips=200.0)
+        set_current_state(state)
         initial_chips = state.chips
         
         # Track game statistics
@@ -29,16 +30,17 @@ class TestCompleteGameFlow:
         for hand_num in range(3):
             # Place bet
             bet_amount = 20.0
-            state = placeBet(state, bet_amount)
+            placeBet(bet_amount)
             
             # Deal initial hands
-            state = dealInitialHands(state)
-            assert len(state.player_hand.cards) == 2
-            assert len(state.dealer_hand.cards) == 2
+            dealInitialHands()
+            current_state = get_current_state()
+            assert len(current_state.player_hand.cards) == 2
+            assert len(current_state.dealer_hand.cards) == 2
             
             # Evaluate initial hands
-            player_eval = evaluateHand(state.player_hand)
-            dealer_eval = evaluateHand(state.dealer_hand)
+            player_eval = evaluateHand(current_state.player_hand)
+            dealer_eval = evaluateHand(current_state.dealer_hand)
             
             # Handle different scenarios
             if player_eval.is_blackjack:
@@ -56,70 +58,75 @@ class TestCompleteGameFlow:
                 if hand_num == 0:
                     # First hand: Hit until 17 or bust
                     while player_eval.total < 17 and not player_eval.is_bust:
-                        state = processPlayerAction('hit', state)
-                        player_eval = evaluateHand(state.player_hand)
+                        processPlayerAction('hit')
+                        current_state = get_current_state()
+                        player_eval = evaluateHand(current_state.player_hand)
                 elif hand_num == 1:
                     # Second hand: Stand immediately
                     pass  # No action needed
                 else:
                     # Third hand: Hit once then stand
                     if player_eval.total < 21:
-                        state = processPlayerAction('hit', state)
-                        player_eval = evaluateHand(state.player_hand)
+                        processPlayerAction('hit')
+                        current_state = get_current_state()
+                        player_eval = evaluateHand(current_state.player_hand)
                 
                 # Dealer plays if player didn't bust
                 if not player_eval.is_bust:
-                    state = processDealerPlay(state)
+                    processDealerPlay()
             
             # Settle the bet
-            payout, result = settleBet(state)
+            settle_result = settleBet()
             
             # Update statistics
-            if result == 'win':
+            if settle_result["result"] == 'win':
                 wins += 1
-            elif result == 'loss':
+            elif settle_result["result"] == 'loss':
                 losses += 1
             else:
                 pushes += 1
             
-            # Update chips
-            state = updateChips(state, payout)
+            # Update chips (already done in settleBet)
+            current_state = get_current_state()
             
             # Verify payout consistency
-            if result == 'win':
+            if settle_result["result"] == 'win':
                 # Check if it's a blackjack (1.5x payout) or regular win (1x payout)
-                player_eval = evaluateHand(state.player_hand)
+                # We need to check the player evaluation before settlement
                 if player_eval.is_blackjack:
-                    assert payout == bet_amount * 1.5
+                    assert settle_result["payout"] == bet_amount * 2.5  # bet back + 1.5x winnings
                 else:
-                    assert payout == bet_amount
-            elif result == 'loss':
-                assert payout == -bet_amount
+                    assert settle_result["payout"] == bet_amount * 2  # bet back + equal winnings
+            elif settle_result["result"] == 'loss':
+                assert settle_result["payout"] == 0.0
             else:  # push
-                assert payout == 0.0
+                assert settle_result["payout"] == bet_amount
             
             # Display state for this hand
-            display_result = displayState(state, revealDealerHole=True)
-            assert "Player Hand:" in display_result
-            assert "Dealer Hand:" in display_result
-            assert f"Chips: {state.chips}" in display_result
+            display_result = displayState(revealDealerHole=True)
+            assert "Player Hand:" in display_result["display_text"]
+            assert "Dealer Hand:" in display_result["display_text"]
+            assert f"Chips: {current_state.chips}" in display_result["display_text"]
             
             # Reset for next hand (unless this is the last hand)
             if hand_num < 2:
-                state = resetForNextHand(state)
-                assert len(state.player_hand.cards) == 0
-                assert len(state.dealer_hand.cards) == 0
-                assert state.bet == 0.0
+                resetForNextHand()
+                current_state = get_current_state()
+                assert len(current_state.player_hand.cards) == 0
+                assert len(current_state.dealer_hand.cards) == 0
+                assert current_state.bet == 0.0
         
         # Verify final statistics
         assert wins + losses + pushes == 3
         
         # Verify chips changed (unless all were pushes)
         if pushes < 3:
-            assert state.chips != initial_chips
+            current_state = get_current_state()
+            assert current_state.chips != initial_chips
         
         # Verify we can continue playing
-        assert len(state.shoe) > 0
+        current_state = get_current_state()
+        assert len(current_state.shoe) > 0
     
     def test_edge_case_continuous_play(self):
         """
@@ -130,25 +137,25 @@ class TestCompleteGameFlow:
         """
         # Initialize game state
         state = GameState(shoe=shuffleShoe(), chips=100.0)
+        set_current_state(state)
         
         # Play hands until we run out of chips or cards
         hand_count = 0
         max_hands = 10  # Safety limit
         
-        while state.chips >= 5.0 and hand_count < max_hands:
+        while get_current_state().chips >= 5.0 and hand_count < max_hands:
             # Place minimum bet
             bet_amount = 5.0
-            state = placeBet(state, bet_amount)
+            placeBet(bet_amount)
             
             # Deal hands
-            state = dealInitialHands(state)
+            dealInitialHands()
             
             # Quick settlement (no player/dealer action for speed)
-            payout, result = settleBet(state)
-            state = updateChips(state, payout)
+            settleBet()
             
             # Reset for next hand
-            state = resetForNextHand(state)
+            resetForNextHand()
             
             hand_count += 1
         
@@ -156,7 +163,8 @@ class TestCompleteGameFlow:
         assert hand_count > 0
         
         # Verify final state is valid
-        assert len(state.player_hand.cards) == 0
-        assert len(state.dealer_hand.cards) == 0
-        assert state.bet == 0.0
-        assert state.chips >= 0.0  # Shouldn't go negative 
+        current_state = get_current_state()
+        assert len(current_state.player_hand.cards) == 0
+        assert len(current_state.dealer_hand.cards) == 0
+        assert current_state.bet == 0.0
+        assert current_state.chips >= 0.0  # Shouldn't go negative 

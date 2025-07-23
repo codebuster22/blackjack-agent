@@ -1,42 +1,72 @@
 import pytest
-from dealer_agent.tools.dealer import drawCard, Card, Suit, Rank
+from dealer_agent.tools.dealer import initialize_game, reset_game_state, drawCard
 
 
 class TestDrawCard:
-    """Test cases for drawCard() function."""
+    """Test the drawCard function."""
     
-    def test_pop_behavior(self):
-        """
-        Test that drawCard() removes and returns the last card from the shoe.
-        Expected result: Returns the last card and reduces shoe size by 1.
-        Mock values: Small shoe with 2 known cards.
-        Why: Verify the card drawing mechanism works correctly.
-        """
-        # Create a small test shoe
-        test_shoe = [
-            Card(suit=Suit.hearts, rank=Rank.ace),
-            Card(suit=Suit.diamonds, rank=Rank.king)
-        ]
-        original_size = len(test_shoe)
-        last_card = test_shoe[-1]
-        
-        card, new_shoe = drawCard(test_shoe)
-        
-        # Check returned card matches last card
-        assert card == last_card
-        # Check shoe size reduced by 1
-        assert len(new_shoe) == original_size - 1
-        # Check the returned shoe doesn't contain the drawn card
-        assert card not in new_shoe
+    def setup_method(self):
+        """Reset game state before each test."""
+        reset_game_state()
     
-    def test_empty_shoe(self):
-        """
-        Test that drawCard() raises an exception when shoe is empty.
-        Expected result: IndexError when trying to draw from empty shoe.
-        Mock values: Empty list as shoe.
-        Why: Ensure proper error handling when no cards are available.
-        """
-        empty_shoe = []
+    def test_draw_card_success(self):
+        """Test successful card drawing."""
+        # Initialize game
+        init_result = initialize_game()
+        assert init_result["success"] is True
         
-        with pytest.raises(IndexError):
-            drawCard(empty_shoe) 
+        # Draw a card
+        result = drawCard()
+        
+        assert result["success"] is True
+        assert "drawn_card" in result
+        assert "suit" in result["drawn_card"]
+        assert "rank" in result["drawn_card"]
+        assert "player_hand" in result
+        assert len(result["player_hand"]["cards"]) == 1
+        assert result["remaining_cards"] == 311  # 312 - 1 card drawn
+    
+    def test_draw_card_empty_shoe(self):
+        """Test drawing from empty shoe."""
+        # Initialize game
+        init_result = initialize_game()
+        assert init_result["success"] is True
+        
+        # Draw all cards from shoe (312 cards)
+        for _ in range(312):
+            result = drawCard()
+            assert result["success"] is True
+        
+        # Try to draw one more card
+        result = drawCard()
+        assert result["success"] is False
+        assert "Shoe is empty" in result["error"]
+    
+    def test_draw_card_multiple_cards(self):
+        """Test drawing multiple cards."""
+        # Initialize game
+        init_result = initialize_game()
+        assert init_result["success"] is True
+        
+        # Draw multiple cards
+        for i in range(5):
+            result = drawCard()
+            assert result["success"] is True
+            assert len(result["player_hand"]["cards"]) == i + 1
+            assert result["remaining_cards"] == 312 - (i + 1)
+    
+    def test_draw_card_hand_evaluation(self):
+        """Test that hand evaluation is updated after drawing."""
+        # Initialize game
+        init_result = initialize_game()
+        assert init_result["success"] is True
+        
+        # Draw a card
+        result = drawCard()
+        assert result["success"] is True
+        
+        # Check that hand evaluation is included
+        assert "player_bust" in result
+        assert "player_blackjack" in result
+        assert isinstance(result["player_bust"], bool)
+        assert isinstance(result["player_blackjack"], bool) 

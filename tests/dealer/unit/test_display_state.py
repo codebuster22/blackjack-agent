@@ -1,5 +1,5 @@
 import pytest
-from dealer_agent.tools.dealer import displayState, GameState, Hand, Card, Suit, Rank, shuffleShoe, updateChips
+from dealer_agent.tools.dealer import displayState, GameState, Hand, Card, Suit, Rank, shuffleShoe, updateChips, set_current_state
 
 
 class TestDisplayState:
@@ -23,16 +23,19 @@ class TestDisplayState:
                 Card(suit=Suit.clubs, rank=Rank.king)
             ])
         )
+        set_current_state(state)
         
-        result = displayState(state, revealDealerHole=False)
+        result = displayState(revealDealerHole=False)
         
+        # Check success
+        assert result["success"] == True
         # Check player hand displayed with total and chips
-        assert "Player Hand: ['Rank.tenSuit.hearts', 'Rank.fiveSuit.diamonds'] (Total: 15)" in result
-        assert "Chips: 100.0" in result
+        assert "Player Hand: ['Rank.tenSuit.hearts', 'Rank.fiveSuit.diamonds'] (Total: 15)" in result["display_text"]
+        assert "Chips: 100.0" in result["display_text"]
         # Check only dealer up-card shown
-        assert "Dealer Up-Card: Rank.aceSuit.spades" in result
+        assert "Dealer Up-Card: Rank.aceSuit.spades" in result["display_text"]
         # Check dealer hole card not shown
-        assert "Dealer Hand:" not in result
+        assert "Dealer Hand:" not in result["display_text"]
     
     def test_reveal_dealer_hole(self):
         """
@@ -52,16 +55,19 @@ class TestDisplayState:
                 Card(suit=Suit.clubs, rank=Rank.king)
             ])
         )
+        set_current_state(state)
         
-        result = displayState(state, revealDealerHole=True)
+        result = displayState(revealDealerHole=True)
         
+        # Check success
+        assert result["success"] == True
         # Check player hand displayed with total and chips
-        assert "Player Hand: ['Rank.tenSuit.hearts', 'Rank.fiveSuit.diamonds'] (Total: 15)" in result
-        assert "Chips: 100.0" in result
+        assert "Player Hand: ['Rank.tenSuit.hearts', 'Rank.fiveSuit.diamonds'] (Total: 15)" in result["display_text"]
+        assert "Chips: 100.0" in result["display_text"]
         # Check dealer hand displayed with total
-        assert "Dealer Hand: ['Rank.aceSuit.spades', 'Rank.kingSuit.clubs'] (Total: 21)" in result
+        assert "Dealer Hand: ['Rank.aceSuit.spades', 'Rank.kingSuit.clubs'] (Total: 21)" in result["display_text"]
         # Check dealer up-card not shown separately
-        assert "Dealer Up-Card:" not in result
+        assert "Dealer Up-Card:" not in result["display_text"]
     
     def test_empty_hands(self):
         """
@@ -75,13 +81,16 @@ class TestDisplayState:
             player_hand=Hand(cards=[]),
             dealer_hand=Hand(cards=[])
         )
+        set_current_state(state)
         
-        result = displayState(state, revealDealerHole=True)
+        result = displayState(revealDealerHole=True)
         
+        # Check success
+        assert result["success"] == True
         # Check empty hands displayed with chips
-        assert "Player Hand: [] (Total: 0)" in result
-        assert "Dealer Hand: [] (Total: 0)" in result
-        assert "Chips: 100.0" in result
+        assert "Player Hand: [] (Total: 0)" in result["display_text"]
+        assert "Dealer Hand: No cards yet" in result["display_text"]
+        assert "Chips: 100.0" in result["display_text"]
     
     def test_hide_dealer_hole_with_specific_cards(self):
         """
@@ -102,16 +111,19 @@ class TestDisplayState:
                 Card(suit=Suit.spades, rank=Rank.five)
             ])
         )
+        set_current_state(state)
         
-        result = displayState(state, revealDealerHole=False)
+        result = displayState(revealDealerHole=False)
         
+        # Check success
+        assert result["success"] == True
         # Check player hand displayed with total and chips
-        assert "Player Hand: ['Rank.aceSuit.hearts', 'Rank.nineSuit.clubs'] (Total: 20)" in result
-        assert "Chips: 80.0" in result
+        assert "Player Hand: ['Rank.aceSuit.hearts', 'Rank.nineSuit.clubs'] (Total: 20)" in result["display_text"]
+        assert "Chips: 80.0" in result["display_text"]
         # Check only dealer up-card shown
-        assert "Dealer Up-Card: Rank.kingSuit.diamonds" in result
+        assert "Dealer Up-Card: Rank.kingSuit.diamonds" in result["display_text"]
         # Check dealer hole card not shown
-        assert "Dealer Hand:" not in result
+        assert "Dealer Hand:" not in result["display_text"]
     
     def test_reveal_dealer_hole_with_specific_cards(self):
         """
@@ -132,16 +144,19 @@ class TestDisplayState:
                 Card(suit=Suit.spades, rank=Rank.five)
             ])
         )
+        set_current_state(state)
         
-        result = displayState(state, revealDealerHole=True)
+        result = displayState(revealDealerHole=True)
         
+        # Check success
+        assert result["success"] == True
         # Check player hand displayed with total and chips
-        assert "Player Hand: ['Rank.aceSuit.hearts', 'Rank.nineSuit.clubs'] (Total: 20)" in result
-        assert "Chips: 80.0" in result
+        assert "Player Hand: ['Rank.aceSuit.hearts', 'Rank.nineSuit.clubs'] (Total: 20)" in result["display_text"]
+        assert "Chips: 80.0" in result["display_text"]
         # Check dealer hand displayed with total
-        assert "Dealer Hand: ['Rank.kingSuit.diamonds', 'Rank.fiveSuit.spades'] (Total: 15)" in result
+        assert "Dealer Hand: ['Rank.kingSuit.diamonds', 'Rank.fiveSuit.spades'] (Total: 15)" in result["display_text"]
         # Check dealer up-card not shown separately
-        assert "Dealer Up-Card:" not in result
+        assert "Dealer Up-Card:" not in result["display_text"]
     
     def test_after_payout_reflection(self):
         """
@@ -162,17 +177,20 @@ class TestDisplayState:
                 Card(suit=Suit.spades, rank=Rank.five)
             ])
         )
+        set_current_state(state)
         
         # Simulate winning payout
-        state = updateChips(state, 20.0)
+        updateChips(20.0)
         
-        result = displayState(state, revealDealerHole=False)
+        result = displayState(revealDealerHole=False)
         
+        # Check success
+        assert result["success"] == True
         # Check player hand displayed with total and updated chips
-        assert "Player Hand: ['Rank.aceSuit.hearts', 'Rank.nineSuit.clubs'] (Total: 20)" in result
-        assert "Chips: 100.0" in result
+        assert "Player Hand: ['Rank.aceSuit.hearts', 'Rank.nineSuit.clubs'] (Total: 20)" in result["display_text"]
+        assert "Chips: 100.0" in result["display_text"]
         # Check only dealer up-card shown
-        assert "Dealer Up-Card: Rank.kingSuit.diamonds" in result
+        assert "Dealer Up-Card: Rank.kingSuit.diamonds" in result["display_text"]
     
     def test_edge_case_empty_hands_before_deal(self):
         """
@@ -187,7 +205,14 @@ class TestDisplayState:
             player_hand=Hand(cards=[]),
             dealer_hand=Hand(cards=[])
         )
+        set_current_state(state)
         
-        # This should raise an IndexError since dealer_hand.cards[0] doesn't exist
-        with pytest.raises(IndexError):
-            displayState(state, revealDealerHole=False) 
+        # This should handle empty hands gracefully now
+        result = displayState(revealDealerHole=False)
+        
+        # Check success
+        assert result["success"] == True
+        # Check empty hands displayed with chips
+        assert "Player Hand: [] (Total: 0)" in result["display_text"]
+        assert "Chips: 100.0" in result["display_text"]
+        assert "Dealer Hand: No cards yet" in result["display_text"] 

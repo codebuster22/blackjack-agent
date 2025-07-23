@@ -1,9 +1,13 @@
 import pytest
-from dealer_agent.tools.dealer import processDealerPlay, GameState, Hand, Card, Suit, Rank, shuffleShoe, evaluateHand
+from dealer_agent.tools.dealer import processDealerPlay, GameState, shuffleShoe, Card, Suit, Rank, Hand, reset_game_state
 
 
 class TestProcessDealerPlay:
-    """Test cases for processDealerPlay() function."""
+    """Test the processDealerPlay function."""
+    
+    def setup_method(self):
+        """Reset game state before each test."""
+        reset_game_state()
     
     def test_dealer_hits_up_to_17(self):
         """
@@ -12,6 +16,8 @@ class TestProcessDealerPlay:
         Mock values: Dealer hand with total 12.
         Why: Verify dealer follows standard blackjack rules of hitting on 16 and below.
         """
+        # Initialize game state
+        from dealer_agent.tools.dealer import set_current_state
         state = GameState(
             shoe=shuffleShoe(),
             dealer_hand=Hand(cards=[
@@ -19,15 +25,13 @@ class TestProcessDealerPlay:
                 Card(suit=Suit.diamonds, rank=Rank.two)
             ])
         )
-        original_shoe_size = len(state.shoe)
+        set_current_state(state)
         
-        state = processDealerPlay(state)
+        result = processDealerPlay()
         
-        # Check dealer hand total is >= 17
-        dealer_eval = evaluateHand(state.dealer_hand)
-        assert dealer_eval.total >= 17
-        # Check cards were drawn from shoe
-        assert len(state.shoe) < original_shoe_size
+        assert result["success"] is True
+        assert result["dealer_hand"]["total"] >= 17
+        assert len(result["dealer_hand"]["cards"]) >= 3  # Should have drawn at least 1 more card
     
     def test_soft_17_stand(self):
         """
@@ -36,6 +40,8 @@ class TestProcessDealerPlay:
         Mock values: Dealer hand with [A, 6] (soft 17).
         Why: Verify dealer follows soft 17 rule correctly.
         """
+        # Initialize game state
+        from dealer_agent.tools.dealer import set_current_state
         state = GameState(
             shoe=shuffleShoe(),
             dealer_hand=Hand(cards=[
@@ -43,18 +49,13 @@ class TestProcessDealerPlay:
                 Card(suit=Suit.diamonds, rank=Rank.six)
             ])
         )
-        original_shoe_size = len(state.shoe)
-        original_hand_size = len(state.dealer_hand.cards)
+        set_current_state(state)
         
-        state = processDealerPlay(state)
+        result = processDealerPlay()
         
-        # Check no additional cards drawn
-        assert len(state.dealer_hand.cards) == original_hand_size
-        assert len(state.shoe) == original_shoe_size
-        # Verify total is 17
-        dealer_eval = evaluateHand(state.dealer_hand)
-        assert dealer_eval.total == 17
-        assert dealer_eval.is_soft is True
+        assert result["success"] is True
+        assert result["dealer_hand"]["total"] == 17  # Should still be 17 (soft)
+        assert len(result["dealer_hand"]["cards"]) == 2  # No additional cards drawn
     
     def test_immediate_stand_on_17_plus(self):
         """
@@ -63,6 +64,8 @@ class TestProcessDealerPlay:
         Mock values: Dealer hand with [10, 7] (total 17).
         Why: Verify dealer doesn't draw unnecessarily when already at or above 17.
         """
+        # Initialize game state
+        from dealer_agent.tools.dealer import set_current_state
         state = GameState(
             shoe=shuffleShoe(),
             dealer_hand=Hand(cards=[
@@ -70,14 +73,10 @@ class TestProcessDealerPlay:
                 Card(suit=Suit.diamonds, rank=Rank.seven)
             ])
         )
-        original_shoe_size = len(state.shoe)
-        original_hand_size = len(state.dealer_hand.cards)
+        set_current_state(state)
         
-        state = processDealerPlay(state)
+        result = processDealerPlay()
         
-        # Check no additional cards drawn
-        assert len(state.dealer_hand.cards) == original_hand_size
-        assert len(state.shoe) == original_shoe_size
-        # Verify total is 17
-        dealer_eval = evaluateHand(state.dealer_hand)
-        assert dealer_eval.total == 17 
+        assert result["success"] is True
+        assert result["dealer_hand"]["total"] == 17  # Should still be 17
+        assert len(result["dealer_hand"]["cards"]) == 2  # No additional cards drawn 

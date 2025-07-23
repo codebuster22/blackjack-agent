@@ -1,9 +1,13 @@
 import pytest
-from dealer_agent.tools.dealer import processPlayerAction, GameState, Hand, Card, Suit, Rank, shuffleShoe
+from dealer_agent.tools.dealer import processPlayerAction, GameState, shuffleShoe, Card, Suit, Rank, Hand, reset_game_state
 
 
 class TestProcessPlayerAction:
-    """Test cases for processPlayerAction() function."""
+    """Test the processPlayerAction function."""
+    
+    def setup_method(self):
+        """Reset game state before each test."""
+        reset_game_state()
     
     def test_hit_action(self):
         """
@@ -12,6 +16,8 @@ class TestProcessPlayerAction:
         Mock values: State with player hand total < 21.
         Why: Verify hit action correctly draws a card for the player.
         """
+        # Initialize game state
+        from dealer_agent.tools.dealer import set_current_state
         state = GameState(
             shoe=shuffleShoe(),
             player_hand=Hand(cards=[
@@ -19,15 +25,13 @@ class TestProcessPlayerAction:
                 Card(suit=Suit.diamonds, rank=Rank.five)
             ])
         )
-        original_shoe_size = len(state.shoe)
-        original_hand_size = len(state.player_hand.cards)
+        set_current_state(state)
         
-        state = processPlayerAction('hit', state)
+        result = processPlayerAction('hit')
         
-        # Check one card added to player hand
-        assert len(state.player_hand.cards) == original_hand_size + 1
-        # Check shoe size reduced by 1
-        assert len(state.shoe) == original_shoe_size - 1
+        assert result["success"] is True
+        assert len(result["player_hand"]["cards"]) == 3  # 2 original + 1 hit
+        assert result["remaining_cards"] == 311  # 312 - 1 card drawn
     
     def test_stand_action(self):
         """
@@ -36,6 +40,8 @@ class TestProcessPlayerAction:
         Mock values: State with existing player hand.
         Why: Verify stand action correctly ends player's turn without drawing.
         """
+        # Initialize game state
+        from dealer_agent.tools.dealer import set_current_state
         state = GameState(
             shoe=shuffleShoe(),
             player_hand=Hand(cards=[
@@ -43,17 +49,13 @@ class TestProcessPlayerAction:
                 Card(suit=Suit.diamonds, rank=Rank.five)
             ])
         )
-        original_shoe_size = len(state.shoe)
-        original_hand_size = len(state.player_hand.cards)
-        original_cards = state.player_hand.cards.copy()
+        set_current_state(state)
         
-        state = processPlayerAction('stand', state)
+        result = processPlayerAction('stand')
         
-        # Check no change to player hand
-        assert len(state.player_hand.cards) == original_hand_size
-        assert state.player_hand.cards == original_cards
-        # Check no change to shoe
-        assert len(state.shoe) == original_shoe_size
+        assert result["success"] is True
+        assert len(result["player_hand"]["cards"]) == 2  # No change
+        assert result["remaining_cards"] == 312  # No change to shoe
     
     def test_hit_on_21(self):
         """
@@ -62,6 +64,8 @@ class TestProcessPlayerAction:
         Mock values: State with player hand total = 21.
         Why: Verify the function doesn't prevent drawing when total is 21 (logic handled by caller).
         """
+        # Initialize game state
+        from dealer_agent.tools.dealer import set_current_state
         state = GameState(
             shoe=shuffleShoe(),
             player_hand=Hand(cards=[
@@ -69,11 +73,10 @@ class TestProcessPlayerAction:
                 Card(suit=Suit.diamonds, rank=Rank.ace)
             ])
         )
-        original_shoe_size = len(state.shoe)
-        original_hand_size = len(state.player_hand.cards)
+        set_current_state(state)
         
-        state = processPlayerAction('hit', state)
+        result = processPlayerAction('hit')
         
-        # Check card still drawn
-        assert len(state.player_hand.cards) == original_hand_size + 1
-        assert len(state.shoe) == original_shoe_size - 1 
+        assert result["success"] is True
+        assert len(result["player_hand"]["cards"]) == 3  # 2 original + 1 hit
+        assert result["remaining_cards"] == 311  # 312 - 1 card drawn 

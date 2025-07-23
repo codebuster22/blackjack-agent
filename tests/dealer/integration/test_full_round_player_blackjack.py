@@ -1,7 +1,8 @@
 import pytest
 from dealer_agent.tools.dealer import (
     GameState, shuffleShoe, placeBet, dealInitialHands, 
-    settleBet, updateChips, displayState, evaluateHand
+    settleBet, updateChips, displayState, evaluateHand,
+    set_current_state, get_current_state
 )
 
 
@@ -17,63 +18,66 @@ class TestFullRoundPlayerBlackjack:
         """
         # Initialize game state
         state = GameState(shoe=shuffleShoe(), chips=100.0)
+        set_current_state(state)
         
         # Place bet
-        state = placeBet(state, 20.0)
-        assert state.chips == 80.0
-        assert state.bet == 20.0
+        placeBet(20.0)
+        current_state = get_current_state()
+        assert current_state.chips == 80.0
+        assert current_state.bet == 20.0
         
         # Deal initial hands
-        state = dealInitialHands(state)
-        assert len(state.player_hand.cards) == 2
-        assert len(state.dealer_hand.cards) == 2
+        dealInitialHands()
+        current_state = get_current_state()
+        assert len(current_state.player_hand.cards) == 2
+        assert len(current_state.dealer_hand.cards) == 2
         
         # Check if player has blackjack
-        player_eval = evaluateHand(state.player_hand)
-        dealer_eval = evaluateHand(state.dealer_hand)
+        player_eval = evaluateHand(current_state.player_hand)
+        dealer_eval = evaluateHand(current_state.dealer_hand)
         
         # For this test, we'll simulate a scenario where player gets blackjack
         # In a real scenario, this would be random, but for testing we'll verify
         # the logic works when blackjack occurs
         
         # Settle the bet
-        payout, result = settleBet(state)
+        settle_result = settleBet()
         
-        # If player has blackjack and dealer doesn't, payout should be 1.5x bet
+        # If player has blackjack and dealer doesn't, payout should be bet * 2.5 (bet back + 1.5x winnings)
         if player_eval.is_blackjack and not dealer_eval.is_blackjack:
-            assert payout == 30.0  # 1.5 * 20
-            assert result == 'win'
+            assert settle_result["payout"] == 50.0  # 20 * 2.5 = 50 (bet back + 1.5x winnings)
+            assert settle_result["result"] == 'win'
         elif dealer_eval.is_blackjack and not player_eval.is_blackjack:
-            assert payout == -20.0
-            assert result == 'loss'
+            assert settle_result["payout"] == 0.0
+            assert settle_result["result"] == 'loss'
         elif player_eval.is_blackjack and dealer_eval.is_blackjack:
-            assert payout == 0.0
-            assert result == 'push'
+            assert settle_result["payout"] == 20.0
+            assert settle_result["result"] == 'push'
         else:
             # Neither has blackjack, test normal comparison
             if player_eval.total > dealer_eval.total:
-                assert payout == 20.0
-                assert result == 'win'
+                assert settle_result["payout"] == 40.0
+                assert settle_result["result"] == 'win'
             elif player_eval.total < dealer_eval.total:
-                assert payout == -20.0
-                assert result == 'loss'
+                assert settle_result["payout"] == 0.0
+                assert settle_result["result"] == 'loss'
             else:
-                assert payout == 0.0
-                assert result == 'push'
+                assert settle_result["payout"] == 20.0
+                assert settle_result["result"] == 'push'
         
-        # Update chips with payout
-        state = updateChips(state, payout)
+        # Update chips with payout (already done in settleBet)
+        current_state = get_current_state()
         
         # Verify chips are updated correctly
-        if result == 'win':
-            assert state.chips == 80.0 + payout
-        elif result == 'loss':
-            assert state.chips == 80.0 + payout
+        if settle_result["result"] == 'win':
+            assert current_state.chips == 80.0 + settle_result["payout"]
+        elif settle_result["result"] == 'loss':
+            assert current_state.chips == 80.0 + settle_result["payout"]
         else:  # push
-            assert state.chips == 80.0
+            assert current_state.chips == 80.0 + settle_result["payout"]
         
         # Display final state
-        display_result = displayState(state, revealDealerHole=True)
-        assert "Player Hand:" in display_result
-        assert "Dealer Hand:" in display_result
-        assert f"Chips: {state.chips}" in display_result 
+        display_result = displayState(revealDealerHole=True)
+        assert "Player Hand:" in display_result["display_text"]
+        assert "Dealer Hand:" in display_result["display_text"]
+        assert f"Chips: {current_state.chips}" in display_result["display_text"] 
