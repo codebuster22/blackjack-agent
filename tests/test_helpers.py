@@ -214,78 +214,51 @@ def create_test_user(username: Optional[str] = None, initial_balance: float = 10
         username = f"test_user_{uuid.uuid4().hex[:8]}"
     
     try:
-        # Set up environment variables for services
-        setup_test_environment()
+        from services.service_manager import service_manager
         
-        from services.user_manager import UserManager
-        from services.db import DatabaseService
-        
-        # Create database service and initialize it
-        db_service = DatabaseService()
-        db_service.init_database(TEST_DATABASE_URL)
-        
-        # Create user manager
-        user_manager = UserManager(db_service)
-        
-        # Create user using the create_user_if_not_exists method
-        user_id = user_manager.create_user_if_not_exists(username)
+        # Create user using the service manager (which should be configured for tests)
+        username = service_manager.user_manager.create_user_if_not_exists(username)
         
         # Set initial balance if different from default
         if initial_balance != 100.0:  # Default from config
-            user_manager.credit_user_balance(user_id, initial_balance - 100.0)
+            service_manager.user_manager.credit_user_balance(username, initial_balance - 100.0)
         
         return {
-            "user_id": user_id,
+            "user_id": username,  # For backward compatibility, return username as user_id
             "username": username,
             "balance": initial_balance
         }
     except Exception as e:
         raise DatabaseError(f"Failed to create test user: {e}")
-    finally:
-        # Clean up environment
-        cleanup_test_environment()
 
 
-def create_test_session(user_id: str) -> Dict[str, Any]:
+def create_test_session(username: str) -> Dict[str, Any]:
     """
     Create a test session for the given user.
     
     Args:
-        user_id: The user ID to create a session for
+        username: The username to create a session for
         
     Returns:
-        Dict[str, Any]: Session data including session_id and user_id
+        Dict[str, Any]: Session data including session_id and username
         
     Raises:
         DatabaseError: If session creation fails
     """
     try:
-        # Set up environment variables for services
-        setup_test_environment()
+        from services.service_manager import service_manager
         
-        from services.user_manager import UserManager
-        from services.db import DatabaseService
-        
-        # Create database service and initialize it
-        db_service = DatabaseService()
-        db_service.init_database(TEST_DATABASE_URL)
-        
-        # Create user manager
-        user_manager = UserManager(db_service)
-        
-        # Create session
-        session_id = user_manager.create_session(user_id)
+        # Create session using the service manager (which should be configured for tests)
+        session_id = service_manager.user_manager.create_session(username)
         
         return {
             "session_id": session_id,
-            "user_id": user_id,
+            "user_id": username,  # For backward compatibility
+            "username": username,
             "created_at": datetime.now().isoformat()
         }
     except Exception as e:
         raise DatabaseError(f"Failed to create test session: {e}")
-    finally:
-        # Clean up environment
-        cleanup_test_environment()
 
 
 def get_test_balance() -> float:
@@ -302,33 +275,33 @@ def setup_test_environment() -> None:
     """
     Set up the test environment by setting all required environment variables.
     """
-    # Database Configuration
-    os.environ["DATABASE_URL"] = TEST_DATABASE_URL
-    os.environ["DB_POOL_SIZE"] = "5"
-    os.environ["DB_TIMEOUT"] = "30"
+    # Database Configuration (using nested format expected by config)
+    os.environ["DATABASE__URL"] = TEST_DATABASE_URL
+    os.environ["DATABASE__POOL_SIZE"] = "20"  # Increased for tests
+    os.environ["DATABASE__TIMEOUT"] = "30"
     
     # Session Configuration
-    os.environ["SESSION_NAMESPACE"] = "blackjack-game"
-    os.environ["SESSION_DEFAULT_STATUS"] = "active"
+    os.environ["SESSION__NAMESPACE"] = "blackjack-game"
+    os.environ["SESSION__DEFAULT_STATUS"] = "active"
     
     # Logging Configuration
-    os.environ["LOG_LEVEL"] = "DEBUG"
-    os.environ["LOG_FORMAT"] = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    os.environ["LOGGING__LEVEL"] = "DEBUG"
+    os.environ["LOGGING__FORMAT"] = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
     
     # Game Configuration
-    os.environ["GAME_STARTING_CHIPS"] = "100.0"
-    os.environ["GAME_MIN_BET"] = "5.0"
-    os.environ["GAME_MAX_BET"] = "1000.0"
-    os.environ["GAME_SHOE_THRESHOLD"] = "50"
+    os.environ["GAME__STARTING_CHIPS"] = "100.0"
+    os.environ["GAME__MIN_BET"] = "5.0"
+    os.environ["GAME__MAX_BET"] = "1000.0"
+    os.environ["GAME__SHOE_THRESHOLD"] = "50"
     
     # Environment
     os.environ["ENVIRONMENT"] = "testing"
     os.environ["DEBUG"] = "false"
     
     # API Configuration
-    os.environ["GOOGLE_GENAI_USE_VERTEXAI"] = "false"
-    os.environ["GOOGLE_API_KEY"] = "test_key"
-    os.environ["XAI_API_KEY"] = "test_xai_key"
+    os.environ["API__GOOGLE_GENAI_USE_VERTEXAI"] = "false"
+    os.environ["API__GOOGLE_API_KEY"] = "test_key"
+    os.environ["API__XAI_API_KEY"] = "test_xai_key"
 
 
 def cleanup_test_environment() -> None:
@@ -337,17 +310,17 @@ def cleanup_test_environment() -> None:
     """
     test_env_vars = [
         # Database Configuration
-        "DATABASE_URL", "DB_POOL_SIZE", "DB_TIMEOUT",
+        "DATABASE__URL", "DATABASE__POOL_SIZE", "DATABASE__TIMEOUT",
         # Session Configuration
-        "SESSION_NAMESPACE", "SESSION_DEFAULT_STATUS",
+        "SESSION__NAMESPACE", "SESSION__DEFAULT_STATUS",
         # Logging Configuration
-        "LOG_LEVEL", "LOG_FORMAT",
+        "LOGGING__LEVEL", "LOGGING__FORMAT",
         # Game Configuration
-        "GAME_STARTING_CHIPS", "GAME_MIN_BET", "GAME_MAX_BET", "GAME_SHOE_THRESHOLD",
+        "GAME__STARTING_CHIPS", "GAME__MIN_BET", "GAME__MAX_BET", "GAME__SHOE_THRESHOLD",
         # Environment
         "ENVIRONMENT", "DEBUG",
         # API Configuration
-        "GOOGLE_GENAI_USE_VERTEXAI", "GOOGLE_API_KEY", "XAI_API_KEY"
+        "API__GOOGLE_GENAI_USE_VERTEXAI", "API__GOOGLE_API_KEY", "API__XAI_API_KEY"
     ]
     
     for key in test_env_vars:

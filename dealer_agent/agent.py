@@ -18,7 +18,7 @@ MODEL_GEMINI_2_0_FLASH = "gemini-2.0-flash"
 
 grok3Mini = LiteLlm(model=MODEL_XAI_3_MINI)
 
-root_agent = Agent(
+dealer_agent = Agent(
     model=grok3Mini,
     name="dealer_agent",
     description=(

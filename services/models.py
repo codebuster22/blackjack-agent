@@ -52,20 +52,20 @@ CREATE TABLE IF NOT EXISTS users (
 );
 """
 
-SESSIONS_TABLE_SQL = """
-CREATE TABLE IF NOT EXISTS sessions (
+BLACKJACK_SESSIONS_TABLE_SQL = """
+CREATE TABLE IF NOT EXISTS blackjack_sessions (
     session_id UUID PRIMARY KEY,
     user_id UUID NOT NULL REFERENCES users(user_id),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     status TEXT DEFAULT 'active' CHECK (status IN ('active', 'completed', 'abandoned')),
-    CONSTRAINT fk_sessions_user FOREIGN KEY (user_id) REFERENCES users(user_id)
+    CONSTRAINT fk_blackjack_sessions_user FOREIGN KEY (user_id) REFERENCES users(user_id)
 );
 """
 
 ROUNDS_TABLE_SQL = """
 CREATE TABLE IF NOT EXISTS rounds (
     round_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    session_id UUID NOT NULL REFERENCES sessions(session_id),
+    session_id UUID NOT NULL REFERENCES blackjack_sessions(session_id),
     bet_amount DECIMAL(15,2) NOT NULL,
     player_hand TEXT NOT NULL,
     dealer_hand TEXT NOT NULL,
@@ -76,7 +76,7 @@ CREATE TABLE IF NOT EXISTS rounds (
     chips_before DECIMAL(15,2) NOT NULL,
     chips_after DECIMAL(15,2) NOT NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    CONSTRAINT fk_rounds_session FOREIGN KEY (session_id) REFERENCES sessions(session_id)
+    CONSTRAINT fk_rounds_session FOREIGN KEY (session_id) REFERENCES blackjack_sessions(session_id)
 );
 """
 
@@ -117,9 +117,9 @@ $$ LANGUAGE plpgsql;
 # Indexes for performance
 INDEXES_SQL = [
     "CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);",
-    "CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id);",
-    "CREATE INDEX IF NOT EXISTS idx_sessions_status ON sessions(status);",
-    "CREATE INDEX IF NOT EXISTS idx_sessions_created_at ON sessions(created_at);",
+    "CREATE INDEX IF NOT EXISTS idx_blackjack_sessions_user_id ON blackjack_sessions(user_id);",
+    "CREATE INDEX IF NOT EXISTS idx_blackjack_sessions_status ON blackjack_sessions(status);",
+    "CREATE INDEX IF NOT EXISTS idx_blackjack_sessions_created_at ON blackjack_sessions(created_at);",
     "CREATE INDEX IF NOT EXISTS idx_rounds_session_id ON rounds(session_id);",
     "CREATE INDEX IF NOT EXISTS idx_rounds_created_at ON rounds(created_at);"
 ] 

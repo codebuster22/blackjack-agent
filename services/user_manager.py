@@ -25,13 +25,13 @@ class UserManager:
     
     def create_user_if_not_exists(self, username: str) -> str:
         """
-        Create user if not exists, return user_id.
+        Create user if not exists, return username.
         
         Args:
             username: The username for the user
             
         Returns:
-            str: The user_id (existing or newly created)
+            str: The username (existing or newly created)
             
         Raises:
             ValueError: If username is invalid
@@ -40,7 +40,7 @@ class UserManager:
             # Check if user exists
             existing_user = self._get_user_by_username(username)
             if existing_user:
-                return existing_user['user_id']
+                return username
             
             # Create new user
             with self.db_service.get_connection() as conn:
@@ -55,18 +55,36 @@ class UserManager:
                     conn.commit()
                     
                     logger.info(f"Created new user: {username} with ID: {user_id}")
-                    return str(user_id)
+                    return username
                     
         except Exception as e:
             logger.error(f"Failed to create user {username}: {e}")
             raise ValueError(f"Failed to create user: {e}")
     
-    def get_user_balance(self, user_id: str) -> float:
+    def _get_user_id_by_username(self, username: str) -> str:
+        """
+        Get user UUID by username.
+        
+        Args:
+            username: The username
+            
+        Returns:
+            str: The user UUID
+            
+        Raises:
+            ValueError: If user not found
+        """
+        user = self._get_user_by_username(username)
+        if not user:
+            raise ValueError(f"User not found: {username}")
+        return str(user['user_id'])
+
+    def get_user_balance(self, username: str) -> float:
         """
         Get current user balance.
         
         Args:
-            user_id: The user ID
+            username: The username
             
         Returns:
             float: Current balance
@@ -75,6 +93,7 @@ class UserManager:
             ValueError: If user not found
         """
         try:
+            user_id = self._get_user_id_by_username(username)
             with self.db_service.get_connection() as conn:
                 with conn.cursor() as cursor:
                     cursor.execute("""
@@ -83,20 +102,20 @@ class UserManager:
                     
                     result = cursor.fetchone()
                     if not result:
-                        raise ValueError(f"User not found: {user_id}")
+                        raise ValueError(f"User not found: {username}")
                     
                     return float(result[0])
                     
         except Exception as e:
-            logger.error(f"Failed to get balance for user {user_id}: {e}")
+            logger.error(f"Failed to get balance for user {username}: {e}")
             raise ValueError(f"Failed to get user balance: {e}")
     
-    def debit_user_balance(self, user_id: str, amount: float) -> bool:
+    def debit_user_balance(self, username: str, amount: float) -> bool:
         """
         Debit user balance atomically using PostgreSQL function.
         
         Args:
-            user_id: The user ID
+            username: The username
             amount: Amount to debit
             
         Returns:
@@ -106,6 +125,7 @@ class UserManager:
             raise ValueError("Amount to debit must be greater than 0")
         
         try:
+            user_id = self._get_user_id_by_username(username)
             with self.db_service.get_connection() as conn:
                 with conn.cursor() as cursor:
                     cursor.execute("""
@@ -116,9 +136,9 @@ class UserManager:
                     conn.commit()
                     
                     if result:
-                        logger.info(f"Debited {amount} from user {user_id}")
+                        logger.info(f"Debited {amount} from user {username}")
                     else:
-                        logger.warning(f"Insufficient balance for user {user_id} to debit {amount}")
+                        logger.warning(f"Insufficient balance for user {username} to debit {amount}")
                     
                     return bool(result)
                     
@@ -126,12 +146,12 @@ class UserManager:
             logger.error(f"Failed to debit balance for user {user_id}: {e}")
             return False
     
-    def credit_user_balance(self, user_id: str, amount: float) -> bool:
+    def credit_user_balance(self, username: str, amount: float) -> bool:
         """
         Credit user balance atomically using PostgreSQL function.
         
         Args:
-            user_id: The user ID
+            username: The username
             amount: Amount to credit
             
         Returns:
@@ -141,6 +161,7 @@ class UserManager:
             raise ValueError("Amount to credit must be greater than 0")
 
         try:
+            user_id = self._get_user_id_by_username(username)
             with self.db_service.get_connection() as conn:
                 with conn.cursor() as cursor:
                     cursor.execute("""
@@ -151,45 +172,47 @@ class UserManager:
                     conn.commit()
                     
                     if result:
-                        logger.info(f"Credited {amount} to user {user_id}")
+                        logger.info(f"Credited {amount} to user {username}")
                     else:
-                        logger.error(f"Failed to credit {amount} to user {user_id}")
+                        logger.error(f"Failed to credit {amount} to user {username}")
                     
                     return bool(result)
                     
         except Exception as e:
-            logger.error(f"Failed to credit balance for user {user_id}: {e}")
+            logger.error(f"Failed to credit balance for user {username}: {e}")
             return False
     
-    def verify_user_balance(self, user_id: str, required_amount: float) -> bool:
+    def verify_user_balance(self, username: str, required_amount: float) -> bool:
         """
         Verify user has sufficient balance.
         
         Args:
-            user_id: The user ID
+            username: The username
             required_amount: Required amount
             
         Returns:
             bool: True if sufficient balance, False otherwise
         """
         try:
-            current_balance = self.get_user_balance(user_id)
+            current_balance = self.get_user_balance(username)
             return current_balance >= required_amount
         except Exception as e:
-            logger.error(f"Failed to verify balance for user {user_id}: {e}")
+            logger.error(f"Failed to verify balance for user {username}: {e}")
             return False
     
-    def create_session(self, user_id: str) -> str:
+    def create_session(self, username: str) -> str:
         """
         Create new session with UUID5 for user.
         
         Args:
-            user_id: The user ID
+            username: The username
             
         Returns:
             str: The session ID
         """
         try:
+            user_id = self._get_user_id_by_username(username)
+            
             # Generate deterministic UUID5 for session
             timestamp = datetime.now().isoformat()
             namespace_uuid = uuid.uuid5(uuid.NAMESPACE_URL, "blackjack")
@@ -198,16 +221,16 @@ class UserManager:
             with self.db_service.get_connection() as conn:
                 with conn.cursor() as cursor:
                     cursor.execute("""
-                        INSERT INTO sessions (session_id, user_id, status)
+                        INSERT INTO blackjack_sessions (session_id, user_id, status)
                         VALUES (%s, %s, 'active')
                     """, (session_id, user_id))
                     
                     conn.commit()
-                    logger.info(f"Created session {session_id} for user {user_id}")
+                    logger.info(f"Created session {session_id} for user {username}")
                     return session_id
                     
         except Exception as e:
-            logger.error(f"Failed to create session for user {user_id}: {e}")
+            logger.error(f"Failed to create session for user {username}: {e}")
             raise ValueError(f"Failed to create session: {e}")
     
     def complete_session(self, session_id: str) -> bool:
@@ -224,7 +247,7 @@ class UserManager:
             with self.db_service.get_connection() as conn:
                 with conn.cursor() as cursor:
                     cursor.execute("""
-                        UPDATE sessions SET status = 'completed' 
+                        UPDATE blackjack_sessions SET status = 'completed' 
                         WHERE session_id = %s
                     """, (session_id,))
                     
@@ -250,7 +273,7 @@ class UserManager:
             with self.db_service.get_connection() as conn:
                 with conn.cursor() as cursor:
                     cursor.execute("""
-                        UPDATE sessions SET status = 'abandoned' 
+                        UPDATE blackjack_sessions SET status = 'abandoned' 
                         WHERE session_id = %s
                     """, (session_id,))
                     
@@ -275,7 +298,7 @@ class UserManager:
             with self.db_service.get_connection() as conn:
                 with conn.cursor() as cursor:
                     cursor.execute("""
-                        UPDATE sessions 
+                        UPDATE blackjack_sessions 
                         SET status = 'abandoned' 
                         WHERE status = 'active' 
                         AND created_at < %s

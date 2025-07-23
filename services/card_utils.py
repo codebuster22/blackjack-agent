@@ -5,7 +5,7 @@ Handles conversion between Card objects and string format.
 
 import json
 from typing import List, Dict, Any
-from dealer_agent.tools.dealer import Card, Hand, Suit, Rank
+from dealer_agent.models import Card, Hand, Suit, Rank
 
 def card_to_string(card: Card) -> str:
     """

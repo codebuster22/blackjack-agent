@@ -1,6 +1,6 @@
 # Makefile for blackjack-agent project
 
-.PHONY: help test test-unit test-db test-integration test-all setup teardown clean docker-start docker-stop docker-restart docker-status
+.PHONY: help test test-unit test-db test-integration test-all setup teardown clean docker-start docker-stop docker-restart docker-status migrate
 
 # Default target
 help:
@@ -18,6 +18,7 @@ help:
 	@echo "  docker-stop    - Stop test database"
 	@echo "  docker-restart - Restart test database"
 	@echo "  docker-status  - Check database status"
+	@echo "  migrate        - Migrate sessions table to blackjack_sessions"
 	@echo "  teardown       - Clean up test environment"
 	@echo "  clean          - Clean up all test artifacts"
 
@@ -97,6 +98,11 @@ docker-restart:
 docker-status:
 	@echo "Checking database status..."
 	@source .venv/bin/activate && python scripts/test_setup.py check
+
+# Database migration
+migrate:
+	@echo "Migrating sessions table to blackjack_sessions..."
+	@source .venv/bin/activate && python scripts/migrate_sessions_table.py
 
 # Clean up test artifacts
 clean:

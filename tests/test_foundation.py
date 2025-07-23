@@ -20,10 +20,10 @@ class TestFoundation:
         """Test that test environment variables are set correctly."""
         setup_test_environment()
         
-        assert os.environ["DATABASE_URL"] == TEST_DATABASE_URL
+        assert os.environ["DATABASE__URL"] == TEST_DATABASE_URL
         assert os.environ["ENVIRONMENT"] == "testing"
-        assert os.environ["LOG_LEVEL"] == "DEBUG"
-        assert os.environ["GAME_STARTING_CHIPS"] == "100.0"
+        assert os.environ["LOGGING__LEVEL"] == "DEBUG"
+        assert os.environ["GAME__STARTING_CHIPS"] == "100.0"
         
         cleanup_test_environment()
     

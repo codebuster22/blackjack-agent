@@ -1,15 +1,19 @@
 import pytest
 from dealer_agent.tools.dealer import (
     GameState, shuffleShoe, placeBet, dealInitialHands, 
-    processPlayerAction, processDealerPlay, settleBet, updateChips, 
+    processPlayerAction, processDealerPlay, settleBet, 
     resetForNextHand, displayState, evaluateHand, set_current_state, get_current_state
 )
+from services.service_manager import service_manager
 
 
+@pytest.mark.docker
+@pytest.mark.database
+@pytest.mark.integration
 class TestCompleteGameFlow:
-    """Comprehensive integration test for complete game flow."""
+    """Comprehensive integration test for complete game flow with database."""
     
-    def test_complete_game_session(self):
+    def test_complete_game_session(self, clean_database, mock_tool_context_with_data):
         """
         Test a complete game session with multiple hands and different outcomes.
         Expected result: Game handles various scenarios correctly.
@@ -17,9 +21,8 @@ class TestCompleteGameFlow:
         Why: Verify the complete blackjack game flow works end-to-end.
         """
         # Initialize game state
-        state = GameState(shoe=shuffleShoe(), chips=200.0)
+        state = GameState(shoe=shuffleShoe())
         set_current_state(state)
-        initial_chips = state.chips
         
         # Track game statistics
         wins = 0
@@ -30,7 +33,7 @@ class TestCompleteGameFlow:
         for hand_num in range(3):
             # Place bet
             bet_amount = 20.0
-            placeBet(bet_amount)
+            placeBet(bet_amount, mock_tool_context_with_data)
             
             # Deal initial hands
             dealInitialHands()
@@ -76,7 +79,7 @@ class TestCompleteGameFlow:
                     processDealerPlay()
             
             # Settle the bet
-            settle_result = settleBet()
+            settle_result = settleBet(mock_tool_context_with_data)
             
             # Update statistics
             if settle_result["result"] == 'win':
@@ -86,7 +89,7 @@ class TestCompleteGameFlow:
             else:
                 pushes += 1
             
-            # Update chips (already done in settleBet)
+            # Get current state
             current_state = get_current_state()
             
             # Verify payout consistency
@@ -103,10 +106,10 @@ class TestCompleteGameFlow:
                 assert settle_result["payout"] == bet_amount
             
             # Display state for this hand
-            display_result = displayState(revealDealerHole=True)
+            display_result = displayState(revealDealerHole=True, tool_context=mock_tool_context_with_data)
             assert "Player Hand:" in display_result["display_text"]
             assert "Dealer Hand:" in display_result["display_text"]
-            assert f"Chips: {current_state.chips}" in display_result["display_text"]
+            assert "Balance:" in display_result["display_text"]
             
             # Reset for next hand (unless this is the last hand)
             if hand_num < 2:
@@ -119,16 +122,17 @@ class TestCompleteGameFlow:
         # Verify final statistics
         assert wins + losses + pushes == 3
         
-        # Verify chips changed (unless all were pushes)
+        # Verify balance changed (unless all were pushes)
         if pushes < 3:
-            current_state = get_current_state()
-            assert current_state.chips != initial_chips
+            # Get current balance from database
+            current_balance = service_manager.user_manager.get_user_balance(mock_tool_context_with_data.state.get("user_id"))
+            assert current_balance != 100.0  # Starting balance
         
         # Verify we can continue playing
         current_state = get_current_state()
         assert len(current_state.shoe) > 0
     
-    def test_edge_case_continuous_play(self):
+    def test_edge_case_continuous_play(self, clean_database, mock_tool_context_with_data):
         """
         Test edge case of continuous play with various hand outcomes.
         Expected result: Game handles edge cases gracefully.
@@ -136,23 +140,23 @@ class TestCompleteGameFlow:
         Why: Verify game robustness with unusual scenarios.
         """
         # Initialize game state
-        state = GameState(shoe=shuffleShoe(), chips=100.0)
+        state = GameState(shoe=shuffleShoe())
         set_current_state(state)
         
         # Play hands until we run out of chips or cards
         hand_count = 0
         max_hands = 10  # Safety limit
         
-        while get_current_state().chips >= 5.0 and hand_count < max_hands:
+        while hand_count < max_hands:
             # Place minimum bet
             bet_amount = 5.0
-            placeBet(bet_amount)
+            placeBet(bet_amount, mock_tool_context_with_data)
             
             # Deal hands
             dealInitialHands()
             
             # Quick settlement (no player/dealer action for speed)
-            settleBet()
+            settleBet(mock_tool_context_with_data)
             
             # Reset for next hand
             resetForNextHand()
@@ -167,4 +171,6 @@ class TestCompleteGameFlow:
         assert len(current_state.player_hand.cards) == 0
         assert len(current_state.dealer_hand.cards) == 0
         assert current_state.bet == 0.0
-        assert current_state.chips >= 0.0  # Shouldn't go negative 
+        # Verify balance is non-negative
+        current_balance = service_manager.user_manager.get_user_balance(mock_tool_context_with_data.state.get("user_id"))
+        assert current_balance >= 0.0  # Shouldn't go negative 

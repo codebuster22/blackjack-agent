@@ -3,6 +3,25 @@ from google.adk.tools.tool_context import ToolContext
 import random
 from enum import Enum
 from pydantic import BaseModel, Field
+import uuid
+from datetime import datetime
+
+# Import services
+from services.service_manager import service_manager
+from services.card_utils import hand_to_string, string_to_hand
+
+# Custom exceptions
+class InsufficientBalanceError(Exception):
+    """Raised when user doesn't have enough chips."""
+    pass
+
+class DatabaseError(Exception):
+    """Raised when database operations fail."""
+    pass
+
+class SessionError(Exception):
+    """Raised when session operations fail."""
+    pass
 
 """
 @LeraningNotes:
@@ -17,49 +36,15 @@ from pydantic import BaseModel, Field
 - ADK can read custom data types as returns, but cannot build custom data type parameters for inputs.
 """
 
-# ----- Models -----
-
-class Suit(str, Enum):
-    hearts = 'H'
-    diamonds = 'D'
-    clubs = 'C'
-    spades = 'S'
-
-class Rank(str, Enum):
-    two = '2'
-    three = '3'
-    four = '4'
-    five = '5'
-    six = '6'
-    seven = '7'
-    eight = '8'
-    nine = '9'
-    ten = '10'
-    jack = 'J'
-    queen = 'Q'
-    king = 'K'
-    ace = 'A'
-
-class Card(BaseModel):
-    suit: Suit
-    rank: Rank
-
-class HandEvaluation(BaseModel):
-    total: int
-    is_soft: bool
-    is_blackjack: bool
-    is_bust: bool
-
-class Hand(BaseModel):
-    cards: List[Card] = Field(default_factory=list)
+# Import models
+from dealer_agent.models import Card, Hand, HandEvaluation, Suit, Rank
 
 class GameState(BaseModel):
     shoe: List[Card]
     player_hand: Hand = Field(default_factory=Hand)
     dealer_hand: Hand = Field(default_factory=Hand)
     bet: float = 0.0
-    chips: float = 100.0  # In-memory chips tracker
-    history: List[dict] = Field(default_factory=list)
+    # Note: chips are now managed in database, not in-memory
 
 
 # ----- Tool Context -----
@@ -74,13 +59,12 @@ def get_current_user_id(tool_context: ToolContext) -> str:
 
 # ----- Game Initialization -----
 
-def initialize_game() -> Dict[str, Any]:
+def initialize_game(tool_context: ToolContext = None) -> Dict[str, Any]:
     """
     Initialize a new game by creating a shuffled shoe and game state.
     
-    Creates a fresh game state with a newly shuffled six-deck shoe and
-    initializes the player's chip balance to $100. This function should
-    be called when starting a completely new game session.
+    Creates a fresh game state with a newly shuffled six-deck shoe.
+    User balance is managed in the database, not in-memory.
     
     Use this function when:
     - Starting a brand new game session
@@ -88,31 +72,33 @@ def initialize_game() -> Dict[str, Any]:
     - The current game state is corrupted or invalid
     - You need to initialize the game for the first time
     
+    Args:
+        tool_context (ToolContext, optional): Tool context for getting user balance.
+        
     Returns:
         Dict[str, Any]: A dictionary containing:
             - success (bool): True if initialization was successful
             - message (str): Description of the initialization result
-            - chips (float): Initial chip balance (100.0)
             - remaining_cards (int): Number of cards in the shoe (312)
+            - balance (float): Current user balance (if tool_context provided)
             - error (str): Error message if initialization failed
-            
-    Example:
-        >>> result = initialize_game()
-        >>> result["success"]
-        True
-        >>> result["chips"]
-        100.0
-        >>> result["remaining_cards"]
-        312
     """
     try:
         state = GameState(shoe=shuffleShoe())
         set_current_state(state)
+        
+        # Get user balance if tool_context provided
+        balance = None
+        if tool_context:
+            user_id = tool_context.state.get("user_id")
+            if user_id:
+                balance = service_manager.user_manager.get_user_balance(user_id)
+        
         return {
             "success": True,
             "message": "Game initialized successfully",
-            "chips": state.chips,
-            "remaining_cards": len(state.shoe)
+            "remaining_cards": len(state.shoe),
+            "balance": balance
         }
     except Exception as e:
         return {
@@ -233,58 +219,78 @@ def drawCard() -> Dict[str, Any]:
 
 # ----- Chips Management -----
 
-def placeBet(amount: float) -> Dict[str, Any]:
+def placeBet(amount: float, tool_context: ToolContext) -> Dict[str, Any]:
     """
-    Deduct bet amount from chips and set current bet.
+    Deduct bet amount from user balance and set current bet.
     
-    Validates that the player has sufficient chips and that the bet amount is positive.
-    Deducts the bet amount from the player's chips and sets it as the current bet.
+    Validates that the player has sufficient balance and that the bet amount is positive.
+    Deducts the bet amount from the user's balance using atomic database operations.
     
     Use this function when:
     - Player wants to place a bet before a hand begins
-    - You need to validate bet amount against available chips
+    - You need to validate bet amount against available balance
     - Setting up the initial game state for a new hand
     
     Args:
-        amount (float): The amount to bet, must be positive and <= available chips
+        amount (float): The amount to bet, must be positive and <= available balance
+        tool_context (ToolContext): Tool context containing user_id and session_id
         
     Returns:
         Dict[str, Any]: A dictionary containing:
             - success (bool): True if bet was placed successfully
             - message (str): Description of the bet placement result
-            - chips (float): Updated chip balance after bet deduction
             - bet (float): The current bet amount
+            - balance (float): Updated user balance after bet placement
             - error (str): Error message if bet placement failed
             
     Raises:
-        ValueError: If bet amount is not positive or exceeds available chips
-        
-    Example:
-        >>> result = placeBet(25.0)
-        >>> result["success"]
-        True
-        >>> result["chips"]
-        75.0
-        >>> result["bet"]
-        25.0
+        InsufficientBalanceError: If user doesn't have enough balance
+        DatabaseError: If database operations fail
     """
     try:
-        state = get_current_state()
+        # Get user_id from tool context
+        user_id = tool_context.state.get("user_id")
+        if not user_id:
+            raise SessionError("User ID not found in session context")
+        
+        # Validate bet amount
         if amount <= 0:
             raise ValueError("Bet amount must be positive.")
-        if state.chips < amount:
-            raise ValueError("Insufficient chips to place bet.")
         if amount % 5 != 0:
             raise ValueError("Bet amount must be a multiple of 5.")
-        state.chips -= amount
+        
+        # Atomic debit operation - PostgreSQL handles concurrency and validation
+        if not service_manager.user_manager.debit_user_balance(user_id, amount):
+            raise InsufficientBalanceError("Insufficient balance for bet")
+        
+        # Update game state
+        state = get_current_state()
         state.bet = amount
         set_current_state(state)
+        
+        # Get updated balance after bet placement
+        updated_balance = service_manager.user_manager.get_user_balance(user_id)
         
         return {
             "success": True,
             "message": f"Bet of ${amount} placed successfully",
-            "chips": state.chips,
-            "bet": state.bet
+            "bet": state.bet,
+            "balance": updated_balance
+        }
+    except InsufficientBalanceError as e:
+        return {
+            "success": False,
+            "error": str(e)
+        }
+    except DatabaseError as e:
+        return {
+            "success": False,
+            "error": f"Database error: {str(e)}"
+        }
+    except SessionError as e:
+        return {
+            "success": False,
+            "error": f"Session error: {str(e)}"
         }
     except ValueError as e:
         return {
@@ -297,55 +303,7 @@ def placeBet(amount: float) -> Dict[str, Any]:
             "error": f"Unexpected error: {str(e)}"
         }
 
-def updateChips(payout: float) -> Dict[str, Any]:
-    """
-    Apply payout (positive or negative) to chips.
-    
-    Adds the payout amount to the player's chips. Positive values represent winnings,
-    negative values represent losses. This function is typically called after
-    settling a bet to update the player's chip balance.
-    
-    Use this function when:
-    - Settling bets after a hand is complete
-    - Adding winnings to player's chips
-    - Deducting losses from player's chips
-    - Any time you need to modify the player's chip balance
-    
-    Args:
-        payout (float): The amount to add to chips (positive for wins, negative for losses)
-        
-    Returns:
-        Dict[str, Any]: A dictionary containing:
-            - success (bool): True if chips were updated successfully
-            - chips (float): Updated chip balance
-            - payout (float): The payout amount that was applied
-            - message (str): Description of the chip update
-            
-    Example:
-        >>> result = updateChips(25.0)  # Player wins $25
-        >>> result["success"]
-        True
-        >>> result["chips"]
-        125.0
-        >>> result["payout"]
-        25.0
-    """
-    try:
-        state = get_current_state()
-        state.chips += payout
-        set_current_state(state)
-        
-        return {
-            "success": True,
-            "chips": state.chips,
-            "payout": payout,
-            "message": f"Chips updated: ${payout} (new total: ${state.chips})"
-        }
-    except Exception as e:
-        return {
-            "success": False,
-            "error": str(e)
-        }
+
 
 # ----- Evaluation -----
 
@@ -639,14 +597,14 @@ def processDealerPlay() -> Dict[str, Any]:
 
 # ----- Settlement -----
 
-def settleBet() -> Dict[str, Any]:
+def settleBet(tool_context: ToolContext) -> Dict[str, Any]:
     """
-    Compare hands, compute payout, update chips, and reset for next hand.
+    Compare hands, compute payout, update user balance, save round data, and complete session.
     
     Compares the player's and dealer's final hands to determine the outcome
     and calculate the payout. Handles all blackjack rules including bust,
-    blackjack payouts (1.5x), and pushes (ties). Updates the player's chip
-    balance and automatically resets the game state for the next hand.
+    blackjack payouts (1.5x), and pushes (ties). Updates the user's balance
+    using atomic database operations and saves round data to database.
     
     Use this function when:
     - Both player and dealer have completed their hands
@@ -654,34 +612,42 @@ def settleBet() -> Dict[str, Any]:
     - You want to complete the hand and prepare for the next round
     - This is the final step of a hand
     
+    Args:
+        tool_context (ToolContext): Tool context containing user_id and session_id
+        
     Returns:
         Dict[str, Any]: A dictionary containing:
             - success (bool): True if bet settlement was successful
             - result (str): The outcome: "win", "loss", or "push"
             - payout (float): The payout amount (positive for wins, negative for losses, 0 for push)
-            - chips (float): Updated chip balance after payout
+            - balance (float): Updated user balance after settlement
             - message (str): Human-readable description of the result
-            - round_recorded (bool): True if a round was recorded in history
-            - total_rounds (int): Total number of rounds played so far
-            - reshuffled (bool): True if the shoe was reshuffled
+            - round_saved (bool): True if round was saved to database
+            - session_completed (bool): True if session was marked as completed
+            - total_rounds (int): User's lifetime total number of rounds played
+            - reshuffled (bool): True if shoe was reshuffled (always False for now)
             - error (str): Error message if settlement failed
             
-    Example:
-        >>> result = settleBet()
-        >>> result["success"]
-        True
-        >>> result["result"] in ["win", "loss", "push"]
-        True
-        >>> result["payout"]  # Could be positive, negative, or 0
-        25.0
-        >>> result["round_recorded"]
-        True
+    Raises:
+        DatabaseError: If database operations fail
+        SessionError: If session operations fail
     """
     try:
+        # Get user_id and session_id from tool context
+        user_id = tool_context.state.get("user_id")
+        session_id = tool_context.state.get("session_id")
+        
+        if not user_id or not session_id:
+            raise SessionError("User ID or Session ID not found in session context")
+        
+        # Get current game state
         state = get_current_state()
         player_eval = evaluateHand(state.player_hand)
         dealer_eval = evaluateHand(state.dealer_hand)
         bet = state.bet
+        
+        # Get user's current balance before settlement
+        chips_before = service_manager.user_manager.get_user_balance(user_id)
         
         # Determine payout and result
         if player_eval.is_bust:
@@ -699,33 +665,76 @@ def settleBet() -> Dict[str, Any]:
         else:
             payout, result = bet, 'push'  # Get bet back
         
-        # Update chips
-        chip_result = updateChips(payout)
-        if not chip_result["success"]:
-            return chip_result
+        # Atomic credit operation - PostgreSQL handles concurrency
+        # Only credit if payout is positive (wins and pushes)
+        if payout > 0:
+            if not service_manager.user_manager.credit_user_balance(user_id, payout):
+                raise DatabaseError("Failed to credit user balance")
         
-        # Reset for next hand (this will store history and clear hands)
-        reset_result = resetForNextHand()
-        if not reset_result["success"]:
-            return reset_result
+        # Get updated balance
+        chips_after = service_manager.user_manager.get_user_balance(user_id)
         
-        # Get updated state for final response
-        updated_state = get_current_state()
+        # Get total rounds for this user (lifetime total)
+        # For now, we'll use a simple approach - just increment from 1
+        # TODO: Implement proper round counting when the database schema supports it
+        total_rounds = 1  # This is the first round for this session
+        
+        # Save round data to database
+        round_data = {
+            'round_id': str(uuid.uuid4()),
+            'session_id': session_id,
+            'total_rounds': total_rounds,  # This is the user's lifetime round number
+            'bet_amount': bet,
+            'player_hand': hand_to_string(state.player_hand),
+            'dealer_hand': hand_to_string(state.dealer_hand),
+            'player_total': player_eval.total,
+            'dealer_total': dealer_eval.total,
+            'outcome': result,
+            'payout': payout,
+            'chips_before': chips_before,
+            'chips_after': chips_after
+        }
+        
+        round_saved = service_manager.db_service.save_round(round_data)
+        if not round_saved:
+            raise DatabaseError("Failed to save round data")
+        
+        # Mark session as completed
+        session_completed = service_manager.db_service.update_session_status(session_id, 'completed')
+        if not session_completed:
+            raise SessionError("Failed to complete session")
+        
+        # Clear game state for next round
+        state.player_hand = Hand()
+        state.dealer_hand = Hand()
+        state.bet = 0.0
+        set_current_state(state)
         
         return {
             "success": True,
             "result": result,
             "payout": payout,
-            "chips": updated_state.chips,
-            "message": f"You {result}: ${payout}. Chips now: ${updated_state.chips}",
-            "round_recorded": reset_result["round_recorded"],
-            "total_rounds": reset_result["total_rounds"],
-            "reshuffled": reset_result["reshuffled"]
+            "balance": chips_after,
+            "message": f"You {result}: ${payout}. Balance now: ${chips_after}",
+            "round_saved": round_saved,
+            "session_completed": session_completed,
+            "total_rounds": total_rounds,  # User's lifetime total rounds
+            "reshuffled": False  # Could be enhanced to check shoe exhaustion
+        }
+    except DatabaseError as e:
+        return {
+            "success": False,
+            "error": f"Database error: {str(e)}"
+        }
+    except SessionError as e:
+        return {
+            "success": False,
+            "error": f"Session error: {str(e)}"
         }
     except Exception as e:
         return {
             "success": False,
-            "error": str(e)
+            "error": f"Unexpected error: {str(e)}"
         }
 
 # ----- Shoe Check & Reset -----
@@ -812,25 +821,6 @@ def resetForNextHand() -> Dict[str, Any]:
         # Check if a round was recorded (hands existed before reset)
         round_recorded = bool(state.player_hand.cards or state.dealer_hand.cards)
         
-        # Store the completed round in history before clearing hands
-        if state.player_hand.cards or state.dealer_hand.cards:
-            round_data = {
-                "round_number": len(state.history) + 1,
-                "bet_amount": state.bet,
-                "player_hand": [{"suit": card.suit.value, "rank": card.rank.value} for card in state.player_hand.cards],
-                "dealer_hand": [{"suit": card.suit.value, "rank": card.rank.value} for card in state.dealer_hand.cards],
-                "player_total": evaluateHand(state.player_hand).total,
-                "dealer_total": evaluateHand(state.dealer_hand).total,
-                "player_bust": evaluateHand(state.player_hand).is_bust,
-                "dealer_bust": evaluateHand(state.dealer_hand).is_bust,
-                "player_blackjack": evaluateHand(state.player_hand).is_blackjack,
-                "dealer_blackjack": evaluateHand(state.dealer_hand).is_blackjack,
-                "chips_before": state.chips,  # Chips before bet settlement (after bet was placed)
-                "chips_after": state.chips,
-                "timestamp": "completed"  # Could be enhanced with actual timestamps
-            }
-            state.history.append(round_data)
-        
         # Reshuffle if needed
         reshuffled = False
         shoe_check = checkShoeExhaustion()
@@ -847,11 +837,10 @@ def resetForNextHand() -> Dict[str, Any]:
         return {
             "success": True,
             "message": "Game reset for next hand",
-            "chips": state.chips,
             "remaining_cards": len(state.shoe),
             "reshuffled": reshuffled,
             "round_recorded": round_recorded,
-            "total_rounds": len(state.history)
+            "total_rounds": 0  # History is now managed in database
         }
     except Exception as e:
         return {
@@ -861,12 +850,12 @@ def resetForNextHand() -> Dict[str, Any]:
 
 # ----- Display -----
 
-def displayState(revealDealerHole: bool = False) -> Dict[str, Any]:
+def displayState(revealDealerHole: bool = False, tool_context: ToolContext = None) -> Dict[str, Any]:
     """
     Get a displayable representation of the current game state.
     
     Creates a formatted string representation of the current game state,
-    showing player and dealer hands, totals, and chip balance. The dealer's
+    showing player and dealer hands, totals, and user balance. The dealer's
     hole card can be optionally revealed for debugging or end-of-hand display.
     
     Use this function when:
@@ -880,6 +869,7 @@ def displayState(revealDealerHole: bool = False) -> Dict[str, Any]:
     Args:
         revealDealerHole (bool, optional): Whether to show dealer's hole card. 
                                           Defaults to False.
+        tool_context (ToolContext, optional): Tool context for getting user balance.
         
     Returns:
         Dict[str, Any]: A dictionary containing:
@@ -888,35 +878,39 @@ def displayState(revealDealerHole: bool = False) -> Dict[str, Any]:
             - player_hand (Dict[str, Any]): Player hand information
             - dealer_hand (Dict[str, Any]): Dealer hand information (if revealed)
             - dealer_up_card (Dict[str, str]): Dealer's visible up card
-            - chips (float): Current chip balance
+            - balance (float): Current user balance (if tool_context provided)
             - bet (float): Current bet amount
             - remaining_cards (int): Number of cards left in the shoe
             - error (str): Error message if display generation failed
-            
-    Example:
-        >>> result = displayState()
-        >>> result["success"]
-        True
-        >>> "Player Hand:" in result["display_text"]
-        True
-        >>> result["dealer_up_card"] is not None
-        True
     """
     try:
         state = get_current_state()
         
+        # Get user balance if tool_context provided
+        balance = None
+        if tool_context:
+            user_id = tool_context.state.get("user_id")
+            if user_id:
+                balance = service_manager.user_manager.get_user_balance(user_id)
+        
         # Handle case where dealer hand might be empty
         if not state.dealer_hand.cards:
-            display_text = f"Player Hand: {[f'{c.rank}{c.suit}' for c in state.player_hand.cards]} (Total: {evaluateHand(state.player_hand).total}) | Chips: {state.chips}\nDealer Hand: No cards yet"
+            balance_text = f" | Balance: ${balance}" if balance is not None else ""
+            player_hand_str = hand_to_string(state.player_hand)
+            display_text = f"Player Hand: {player_hand_str} (Total: {evaluateHand(state.player_hand).total}){balance_text}\nDealer Hand: No cards yet"
         else:
             p_eval = evaluateHand(state.player_hand)
-            lines = [f"Player Hand: {[f'{c.rank}{c.suit}' for c in state.player_hand.cards]} (Total: {p_eval.total}) | Chips: {state.chips}"]
+            balance_text = f" | Balance: ${balance}" if balance is not None else ""
+            player_hand_str = hand_to_string(state.player_hand)
+            lines = [f"Player Hand: {player_hand_str} (Total: {p_eval.total}){balance_text}"]
             if revealDealerHole:
                 d_eval = evaluateHand(state.dealer_hand)
-                lines.append(f"Dealer Hand: {[f'{c.rank}{c.suit}' for c in state.dealer_hand.cards]} (Total: {d_eval.total})")
+                dealer_hand_str = hand_to_string(state.dealer_hand)
+                lines.append(f"Dealer Hand: {dealer_hand_str} (Total: {d_eval.total})")
             else:
                 up = state.dealer_hand.cards[0]
-                lines.append(f"Dealer Up-Card: {up.rank}{up.suit}")
+                up_card_str = hand_to_string(Hand(cards=[up]))
+                lines.append(f"Dealer Up-Card: {up_card_str}")
             display_text = '\n'.join(lines)
         
         # Convert to dict format for agent consumption
@@ -938,7 +932,7 @@ def displayState(revealDealerHole: bool = False) -> Dict[str, Any]:
             "player_hand": _hand_to_dict(state.player_hand),
             "dealer_hand": _hand_to_dict(state.dealer_hand) if revealDealerHole else None,
             "dealer_up_card": _card_to_dict(state.dealer_hand.cards[0]) if state.dealer_hand.cards and len(state.dealer_hand.cards) > 0 else None,
-            "chips": state.chips,
+            "balance": balance,
             "bet": state.bet,
             "remaining_cards": len(state.shoe)
         }
@@ -950,7 +944,7 @@ def displayState(revealDealerHole: bool = False) -> Dict[str, Any]:
 
 
 
-def getGameStatus() -> Dict[str, Any]:
+def getGameStatus(tool_context: ToolContext = None) -> Dict[str, Any]:
     """
     Get the current game status without taking any action.
     
@@ -965,24 +959,25 @@ def getGameStatus() -> Dict[str, Any]:
     - Getting a snapshot of the current game
     - Checking if a game is in progress
     
+    Args:
+        tool_context (ToolContext, optional): Tool context for getting user balance.
+        
     Returns:
         Dict[str, Any]: A dictionary containing:
             - success (bool): True if status was retrieved successfully
             - game_state (Dict[str, Any]): Complete game state information
             - message (str): Description of the status retrieval
             - error (str): Error message if status retrieval failed
-            
-    Example:
-        >>> result = get_game_status()
-        >>> result["success"]
-        True
-        >>> "game_state" in result
-        True
-        >>> result["game_state"]["chips"]
-        100.0
     """
     try:
         state = get_current_state()
+        
+        # Get user balance if tool_context provided
+        balance = None
+        if tool_context:
+            user_id = tool_context.state.get("user_id")
+            if user_id:
+                balance = service_manager.user_manager.get_user_balance(user_id)
         
         # Convert to dict format for agent consumption
         def _card_to_dict(card: Card) -> Dict[str, str]:
@@ -1002,7 +997,7 @@ def getGameStatus() -> Dict[str, Any]:
                 "player_hand": _hand_to_dict(state.player_hand),
                 "dealer_hand": _hand_to_dict(state.dealer_hand),
                 "bet": state.bet,
-                "chips": state.chips,
+                "balance": balance,
                 "remaining_cards": len(state.shoe)
             }
         
@@ -1017,13 +1012,13 @@ def getGameStatus() -> Dict[str, Any]:
             "error": str(e)
         }
 
-def getGameHistory() -> Dict[str, Any]:
+def getGameHistory(tool_context: ToolContext) -> Dict[str, Any]:
     """
-    Get the complete game history of all played rounds.
+    Get the complete game history of all played rounds for the user.
     
-    Retrieves the history of all completed rounds in the current game session.
+    Retrieves the history of all completed rounds from the database for the current user.
     This includes detailed information about each round including hands, bets,
-    outcomes, and chip changes. Useful for analytics, debugging, and providing
+    outcomes, and balance changes. Useful for analytics, debugging, and providing
     game statistics to players.
     
     Use this function when:
@@ -1033,6 +1028,9 @@ def getGameHistory() -> Dict[str, Any]:
     - Providing round-by-round summaries
     - Calculating win/loss ratios and other metrics
     
+    Args:
+        tool_context (ToolContext): Tool context containing user_id
+        
     Returns:
         Dict[str, Any]: A dictionary containing:
             - success (bool): True if history was retrieved successfully
@@ -1041,48 +1039,59 @@ def getGameHistory() -> Dict[str, Any]:
             - statistics (Dict): Summary statistics including wins, losses, pushes
             - message (str): Description of the history retrieval
             - error (str): Error message if history retrieval failed
-            
-    Example:
-        >>> result = get_game_history()
-        >>> result["success"]
-        True
-        >>> result["total_rounds"]
-        3
-        >>> len(result["history"])
-        3
-        >>> result["statistics"]["wins"]
-        2
     """
     try:
-        state = get_current_state()
-        history = state.history
+        # Get user_id from tool context
+        user_id = tool_context.state.get("user_id")
+        if not user_id:
+            raise SessionError("User ID not found in session context")
+        
+        # Get user's current balance
+        current_balance = service_manager.user_manager.get_user_balance(user_id)
+        
+        # For now, return empty history since database round tracking is not yet implemented
+        # TODO: Implement proper round tracking in database
+        rounds = []
         
         # Calculate statistics
-        wins = sum(1 for round_data in history if round_data.get("chips_after", 0) > round_data.get("chips_before", 0))
-        losses = sum(1 for round_data in history if round_data.get("chips_after", 0) < round_data.get("chips_before", 0))
-        pushes = sum(1 for round_data in history if round_data.get("chips_after", 0) == round_data.get("chips_before", 0))
+        wins = 0
+        losses = 0
+        pushes = 0
+        total_bet = 0.0
+        net_profit = current_balance - 100.0  # Assuming starting balance of 100
         
         statistics = {
-            "total_rounds": len(history),
+            "total_rounds": len(rounds),
             "wins": wins,
             "losses": losses,
             "pushes": pushes,
-            "win_rate": wins / len(history) if history else 0.0,
-            "total_bet": sum(round_data.get("bet_amount", 0) for round_data in history),
-            "net_profit": state.chips - 100.0  # Assuming starting chips of 100
+            "win_rate": 0.0,
+            "total_bet": total_bet,
+            "net_profit": net_profit,
+            "current_balance": current_balance
         }
         
         return {
             "success": True,
-            "total_rounds": len(history),
-            "history": history,
+            "total_rounds": len(rounds),
+            "history": rounds,
             "statistics": statistics,
-            "message": f"Retrieved history of {len(history)} rounds"
+            "message": f"Retrieved history of {len(rounds)} rounds"
+        }
+    except DatabaseError as e:
+        return {
+            "success": False,
+            "error": f"Database error: {str(e)}"
+        }
+    except SessionError as e:
+        return {
+            "success": False,
+            "error": f"Session error: {str(e)}"
         }
     except Exception as e:
         return {
             "success": False,
-            "error": str(e)
+            "error": f"Unexpected error: {str(e)}"
         }
 
 # Note: I/O functions promptUser and logGame should be implemented in the agent layer.

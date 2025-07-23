@@ -25,16 +25,16 @@ class TestUserManager:
         user_manager = UserManager(db_service)
         
         # Test creating new user
-        user_id = user_manager.create_user_if_not_exists("new_user")
+        username = user_manager.create_user_if_not_exists("new_user")
         
-        assert user_id is not None
+        assert username == "new_user"
         
         # Verify user was created
         with get_test_database_connection() as conn:
             with conn.cursor() as cursor:
                 cursor.execute("""
-                    SELECT username, current_balance FROM users WHERE user_id = %s
-                """, (user_id,))
+                    SELECT username, current_balance FROM users WHERE username = %s
+                """, (username,))
                 user = cursor.fetchone()
                 
                 assert user is not None
@@ -50,13 +50,13 @@ class TestUserManager:
         user_manager = UserManager(db_service)
         
         # Create user first time
-        user_id1 = user_manager.create_user_if_not_exists("existing_user")
+        username1 = user_manager.create_user_if_not_exists("existing_user")
         
         # Try to create same user again
-        user_id2 = user_manager.create_user_if_not_exists("existing_user")
+        username2 = user_manager.create_user_if_not_exists("existing_user")
         
-        # Should return same user_id
-        assert user_id1 == user_id2
+        # Should return same username
+        assert username1 == username2 == "existing_user"
         
         db_service.close()
     
@@ -67,7 +67,7 @@ class TestUserManager:
         user_manager = UserManager(db_service)
         
         # Create a user first
-        user_id1 = user_manager.create_user_if_not_exists("test_user")
+        username1 = user_manager.create_user_if_not_exists("test_user")
         
         # Try to create user with invalid characters that might cause DB error
         with pytest.raises(ValueError, match="Failed to create user"):
@@ -89,11 +89,10 @@ class TestUserManager:
                     VALUES (%s, %s)
                     RETURNING user_id
                 """, ("test_user", 150.0))
-                user_id = cursor.fetchone()[0]
                 conn.commit()
         
         # Test getting balance
-        balance = user_manager.get_user_balance(str(user_id))
+        balance = user_manager.get_user_balance("test_user")
         assert balance == 150.0
         
         db_service.close()
@@ -106,7 +105,7 @@ class TestUserManager:
         
         # Test getting balance for non-existent user
         with pytest.raises(ValueError, match="Failed to get user balance"):
-            user_manager.get_user_balance("nonexistent_user_id")
+            user_manager.get_user_balance("nonexistent_user")
         
         db_service.close()
     
@@ -136,15 +135,14 @@ class TestUserManager:
                     VALUES (%s, %s)
                     RETURNING user_id
                 """, ("test_user", 100.0))
-                user_id = cursor.fetchone()[0]
                 conn.commit()
         
         # Test debit
-        result = user_manager.debit_user_balance(str(user_id), 25.0)
+        result = user_manager.debit_user_balance("test_user", 25.0)
         assert result is True
         
         # Verify balance was updated
-        new_balance = user_manager.get_user_balance(str(user_id))
+        new_balance = user_manager.get_user_balance("test_user")
         assert new_balance == 75.0
         
         db_service.close()
@@ -163,15 +161,14 @@ class TestUserManager:
                     VALUES (%s, %s)
                     RETURNING user_id
                 """, ("test_user", 10.0))
-                user_id = cursor.fetchone()[0]
                 conn.commit()
         
         # Test debit with insufficient funds
-        result = user_manager.debit_user_balance(str(user_id), 25.0)
+        result = user_manager.debit_user_balance("test_user", 25.0)
         assert result is False
         
         # Verify balance was not changed
-        balance = user_manager.get_user_balance(str(user_id))
+        balance = user_manager.get_user_balance("test_user")
         assert balance == 10.0
         
         db_service.close()
@@ -183,7 +180,7 @@ class TestUserManager:
         user_manager = UserManager(db_service)
         
         # Test debit for non-existent user
-        result = user_manager.debit_user_balance("nonexistent_user_id", 25.0)
+        result = user_manager.debit_user_balance("nonexistent_user", 25.0)
         assert result is False
         
         db_service.close()
@@ -202,16 +199,15 @@ class TestUserManager:
                     VALUES (%s, %s)
                     RETURNING user_id
                 """, ("test_user", 100.0))
-                user_id = cursor.fetchone()[0]
                 conn.commit()
         
         # Test debit with zero amount
         with pytest.raises(ValueError, match="Amount to debit must be greater than 0"):
-            user_manager.debit_user_balance(str(user_id), 0.0)
+            user_manager.debit_user_balance("test_user", 0.0)
         
         # Test debit with negative amount
         with pytest.raises(ValueError, match="Amount to debit must be greater than 0"):
-            user_manager.debit_user_balance(str(user_id), -10.0)
+            user_manager.debit_user_balance("test_user", -10.0)
         
         db_service.close()
     
@@ -221,8 +217,8 @@ class TestUserManager:
         db_service.init_database()
         user_manager = UserManager(db_service)
         
-        # Test with invalid UUID format
-        result = user_manager.debit_user_balance("invalid-uuid-format", 25.0)
+        # Test with non-existent user
+        result = user_manager.debit_user_balance("invalid-user", 25.0)
         assert result is False
         
         db_service.close()
@@ -245,7 +241,7 @@ class TestUserManager:
                 conn.commit()
         
         # Test credit
-        result = user_manager.credit_user_balance(str(user_id), 50.0)
+        result = user_manager.credit_user_balance("test_user", 50.0)
         assert result is True
         
         # Verify balance was updated
@@ -285,11 +281,11 @@ class TestUserManager:
         
         # Test credit with zero amount
         with pytest.raises(ValueError, match="Amount to credit must be greater than 0"):
-            user_manager.credit_user_balance(str(user_id), 0.0)
+            user_manager.credit_user_balance("test_user", 0.0)
         
         # Test credit with negative amount
         with pytest.raises(ValueError, match="Amount to credit must be greater than 0"):
-            user_manager.credit_user_balance(str(user_id), -10.0)
+            user_manager.credit_user_balance("test_user", -10.0)
         
         db_service.close()
     
@@ -348,7 +344,7 @@ class TestUserManager:
                 conn.commit()
         
         # Test verification
-        result = user_manager.verify_user_balance(str(user_id), 50.0)
+        result = user_manager.verify_user_balance("test_user", 50.0)
         assert result is True
         
         db_service.close()
@@ -371,7 +367,7 @@ class TestUserManager:
                 conn.commit()
         
         # Test verification
-        result = user_manager.verify_user_balance(str(user_id), 50.0)
+        result = user_manager.verify_user_balance("test_user", 50.0)
         assert result is False
         
         db_service.close()
@@ -394,7 +390,7 @@ class TestUserManager:
                 conn.commit()
         
         # Test verification with exact amount
-        result = user_manager.verify_user_balance(str(user_id), 50.0)
+        result = user_manager.verify_user_balance("test_user", 50.0)
         assert result is True
         
         db_service.close()
@@ -429,7 +425,7 @@ class TestUserManager:
                 conn.commit()
         
         # Test session creation
-        session_id = user_manager.create_session(str(user_id))
+        session_id = user_manager.create_session("test_user")
         
         assert session_id is not None
         
@@ -438,7 +434,7 @@ class TestUserManager:
             with conn.cursor() as cursor:
                 cursor.execute("""
                     SELECT session_id, user_id, status, created_at
-                    FROM sessions WHERE session_id = %s
+                    FROM blackjack_sessions WHERE session_id = %s
                 """, (session_id,))
                 session = cursor.fetchone()
                 
@@ -491,7 +487,7 @@ class TestUserManager:
                 
                 session_id = str(uuid.uuid4())
                 cursor.execute("""
-                    INSERT INTO sessions (session_id, user_id, status)
+                    INSERT INTO blackjack_sessions (session_id, user_id, status)
                     VALUES (%s, %s, %s)
                 """, (session_id, user_id, "active"))
                 conn.commit()
@@ -504,7 +500,7 @@ class TestUserManager:
         with get_test_database_connection() as conn:
             with conn.cursor() as cursor:
                 cursor.execute("""
-                    SELECT status FROM sessions WHERE session_id = %s
+                    SELECT status FROM blackjack_sessions WHERE session_id = %s
                 """, (session_id,))
                 session = cursor.fetchone()
                 
@@ -554,7 +550,7 @@ class TestUserManager:
                 
                 session_id = str(uuid.uuid4())
                 cursor.execute("""
-                    INSERT INTO sessions (session_id, user_id, status)
+                    INSERT INTO blackjack_sessions (session_id, user_id, status)
                     VALUES (%s, %s, %s)
                 """, (session_id, user_id, "active"))
                 conn.commit()
@@ -567,7 +563,7 @@ class TestUserManager:
         with get_test_database_connection() as conn:
             with conn.cursor() as cursor:
                 cursor.execute("""
-                    SELECT status FROM sessions WHERE session_id = %s
+                    SELECT status FROM blackjack_sessions WHERE session_id = %s
                 """, (session_id,))
                 session = cursor.fetchone()
                 
@@ -620,7 +616,7 @@ class TestUserManager:
                 for i in range(3):
                     session_id = str(uuid.uuid4())
                     cursor.execute("""
-                        INSERT INTO sessions (session_id, user_id, status, created_at)
+                        INSERT INTO blackjack_sessions (session_id, user_id, status, created_at)
                         VALUES (%s, %s, %s, %s)
                     """, (session_id, user_id, "active", old_time))
                 
@@ -628,7 +624,7 @@ class TestUserManager:
                 recent_time = datetime.now() - timedelta(minutes=30)
                 recent_session_id = str(uuid.uuid4())
                 cursor.execute("""
-                    INSERT INTO sessions (session_id, user_id, status, created_at)
+                    INSERT INTO blackjack_sessions (session_id, user_id, status, created_at)
                     VALUES (%s, %s, %s, %s)
                 """, (recent_session_id, user_id, "active", recent_time))
                 
@@ -642,13 +638,13 @@ class TestUserManager:
         with get_test_database_connection() as conn:
             with conn.cursor() as cursor:
                 cursor.execute("""
-                    SELECT COUNT(*) FROM sessions WHERE status = 'abandoned'
+                    SELECT COUNT(*) FROM blackjack_sessions WHERE status = 'abandoned'
                 """)
                 abandoned_count = cursor.fetchone()[0]
                 assert abandoned_count == 3  # The old sessions should be marked as abandoned
                 
                 cursor.execute("""
-                    SELECT COUNT(*) FROM sessions WHERE status = 'active'
+                    SELECT COUNT(*) FROM blackjack_sessions WHERE status = 'active'
                 """)
                 active_count = cursor.fetchone()[0]
                 assert active_count == 1  # Only the recent one should remain active
@@ -778,7 +774,7 @@ class TestUserManager:
         with get_test_database_connection() as conn:
             with conn.cursor() as cursor:
                 cursor.execute("""
-                    SELECT status FROM sessions WHERE session_id = %s
+                    SELECT status FROM blackjack_sessions WHERE session_id = %s
                 """, (session_id,))
                 status = cursor.fetchone()[0]
                 assert status == "active"
@@ -791,7 +787,7 @@ class TestUserManager:
         with get_test_database_connection() as conn:
             with conn.cursor() as cursor:
                 cursor.execute("""
-                    SELECT status FROM sessions WHERE session_id = %s
+                    SELECT status FROM blackjack_sessions WHERE session_id = %s
                 """, (session_id,))
                 status = cursor.fetchone()[0]
                 assert status == "completed"
@@ -818,7 +814,7 @@ class TestUserManager:
         with get_test_database_connection() as conn:
             with conn.cursor() as cursor:
                 cursor.execute("""
-                    SELECT COUNT(*) FROM sessions 
+                    SELECT COUNT(*) FROM blackjack_sessions 
                     WHERE user_id = %s AND status = 'active'
                 """, (user_id,))
                 active_count = cursor.fetchone()[0]
@@ -834,19 +830,19 @@ class TestUserManager:
         with get_test_database_connection() as conn:
             with conn.cursor() as cursor:
                 cursor.execute("""
-                    SELECT status FROM sessions WHERE session_id = %s
+                    SELECT status FROM blackjack_sessions WHERE session_id = %s
                 """, (session_ids[0],))
                 status = cursor.fetchone()[0]
                 assert status == "completed"
                 
                 cursor.execute("""
-                    SELECT status FROM sessions WHERE session_id = %s
+                    SELECT status FROM blackjack_sessions WHERE session_id = %s
                 """, (session_ids[1],))
                 status = cursor.fetchone()[0]
                 assert status == "abandoned"
                 
                 cursor.execute("""
-                    SELECT status FROM sessions WHERE session_id = %s
+                    SELECT status FROM blackjack_sessions WHERE session_id = %s
                 """, (session_ids[2],))
                 status = cursor.fetchone()[0]
                 assert status == "active"

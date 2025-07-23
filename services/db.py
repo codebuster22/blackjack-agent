@@ -14,7 +14,7 @@ from psycopg2.extras import RealDictCursor
 from psycopg2.pool import SimpleConnectionPool
 
 from .models import (
-    USERS_TABLE_SQL, SESSIONS_TABLE_SQL, ROUNDS_TABLE_SQL, 
+    USERS_TABLE_SQL, BLACKJACK_SESSIONS_TABLE_SQL, ROUNDS_TABLE_SQL, 
     DEBIT_USER_BALANCE_FUNCTION, CREDIT_USER_BALANCE_FUNCTION,
     INDEXES_SQL, User, Session, Round
 )
@@ -65,7 +65,7 @@ class DatabaseService:
                 with conn.cursor() as cursor:
                     # Create tables
                     cursor.execute(USERS_TABLE_SQL)
-                    cursor.execute(SESSIONS_TABLE_SQL)
+                    cursor.execute(BLACKJACK_SESSIONS_TABLE_SQL)
                     cursor.execute(ROUNDS_TABLE_SQL)
                     
                     # Create PostgreSQL functions
@@ -121,10 +121,10 @@ class DatabaseService:
             bool: True if successful, False otherwise
         """
         try:
-            with self._get_connection() as conn:
+            with self.get_connection() as conn:
                 with conn.cursor() as cursor:
                     cursor.execute(
-                        "INSERT INTO sessions (session_id, user_id, created_at, status) VALUES (%s, %s, %s, %s)",
+                        "INSERT INTO blackjack_sessions (session_id, user_id, created_at, status) VALUES (%s, %s, %s, %s)",
                         (session_id, user_id, datetime.now(), 'active')
                     )
                     conn.commit()
@@ -146,7 +146,7 @@ class DatabaseService:
             bool: True if successful, False otherwise
         """
         try:
-            with self._get_connection() as conn:
+            with self.get_connection() as conn:
                 with conn.cursor() as cursor:
                     cursor.execute("""
                         INSERT INTO rounds (
@@ -187,7 +187,7 @@ class DatabaseService:
             List[Dict]: List of round data dictionaries
         """
         try:
-            with self._get_connection() as conn:
+            with self.get_connection() as conn:
                 with conn.cursor(cursor_factory=RealDictCursor) as cursor:
                     cursor.execute("""
                         SELECT * FROM rounds 
@@ -216,10 +216,10 @@ class DatabaseService:
             List[Dict]: List of session data dictionaries
         """
         try:
-            with self._get_connection() as conn:
+            with self.get_connection() as conn:
                 with conn.cursor(cursor_factory=RealDictCursor) as cursor:
                     cursor.execute("""
-                        SELECT * FROM sessions 
+                        SELECT * FROM blackjack_sessions 
                         WHERE user_id = %s 
                         ORDER BY created_at DESC
                     """, (user_id,))
@@ -245,7 +245,7 @@ class DatabaseService:
             Dict: Session statistics
         """
         try:
-            with self._get_connection() as conn:
+            with self.get_connection() as conn:
                 with conn.cursor() as cursor:
                     cursor.execute("""
                         SELECT 
@@ -288,10 +288,10 @@ class DatabaseService:
             bool: True if successful, False otherwise
         """
         try:
-            with self._get_connection() as conn:
+            with self.get_connection() as conn:
                 with conn.cursor() as cursor:
                     cursor.execute(
-                        "UPDATE sessions SET status = %s WHERE session_id = %s",
+                        "UPDATE blackjack_sessions SET status = %s WHERE session_id = %s",
                         (status, session_id)
                     )
                     conn.commit()

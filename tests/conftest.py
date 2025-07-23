@@ -49,11 +49,27 @@ def docker_compose():
     Starts the test database at the beginning of the test session
     and stops it at the end.
     """
+    # Check if database is already running
+    try:
+        with get_test_database_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute("SELECT 1")
+            # Database is already running, don't start/stop
+            yield
+            return
+    except Exception:
+        pass
+    
+    # Start database if not running
     try:
         start_test_database()
         yield
     finally:
-        stop_test_database()
+        # Only stop if we started it
+        try:
+            stop_test_database()
+        except Exception:
+            pass  # Ignore errors when stopping
 
 
 @pytest.fixture(scope="session")
@@ -93,16 +109,38 @@ def clean_database(class_database):
     Resets the database before each test to ensure complete isolation.
     """
     reset_database()
+    
+    # Reset the service manager to use the test database
+    from services.service_manager import service_manager
+    from tests.test_helpers import TEST_DATABASE_URL
+    service_manager.reset_for_tests(TEST_DATABASE_URL)
+    
     yield class_database
 
 
 @pytest.fixture(scope="function")
-def test_data_manager():
+def test_data_manager(clean_database):
     """
     Function-scoped fixture providing test data management.
     
     Creates and tracks test data for automatic cleanup.
     """
+    # Set up test environment and reload config
+    from tests.test_helpers import setup_test_environment
+    from config import reload_config, config
+    
+    setup_test_environment()
+    
+    # Force config reload by clearing the global config
+    import config as config_module
+    config_module.config = None
+    reload_config()  # Reload config with test environment variables
+    
+    # Ensure service manager is reset before creating test data
+    from services.service_manager import service_manager
+    from tests.test_helpers import TEST_DATABASE_URL
+    service_manager.reset_for_tests(TEST_DATABASE_URL)
+    
     manager = TestDataManager()
     yield manager
     manager.cleanup()

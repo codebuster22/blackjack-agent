@@ -126,7 +126,7 @@ class TestDatabaseService:
             with conn.cursor() as cursor:
                 cursor.execute("""
                     SELECT session_id, user_id, status, created_at
-                    FROM sessions WHERE session_id = %s
+                    FROM blackjack_sessions WHERE session_id = %s
                 """, (session_id,))
                 session = cursor.fetchone()
                 
@@ -194,7 +194,7 @@ class TestDatabaseService:
                 
                 session_id = str(uuid.uuid4())
                 cursor.execute("""
-                    INSERT INTO sessions (session_id, user_id, status)
+                    INSERT INTO blackjack_sessions (session_id, user_id, status)
                     VALUES (%s, %s, %s)
                 """, (session_id, user_id, "active"))
                 conn.commit()
@@ -291,7 +291,7 @@ class TestDatabaseService:
                 
                 session_id = str(uuid.uuid4())
                 cursor.execute("""
-                    INSERT INTO sessions (session_id, user_id, status)
+                    INSERT INTO blackjack_sessions (session_id, user_id, status)
                     VALUES (%s, %s, %s)
                 """, (session_id, user_id, "active"))
                 
@@ -338,7 +338,7 @@ class TestDatabaseService:
                 
                 session_id = str(uuid.uuid4())
                 cursor.execute("""
-                    INSERT INTO sessions (session_id, user_id, status)
+                    INSERT INTO blackjack_sessions (session_id, user_id, status)
                     VALUES (%s, %s, %s)
                 """, (session_id, user_id, "active"))
                 conn.commit()
@@ -379,7 +379,7 @@ class TestDatabaseService:
                 for i in range(3):
                     session_id = str(uuid.uuid4())
                     cursor.execute("""
-                        INSERT INTO sessions (session_id, user_id, status)
+                        INSERT INTO blackjack_sessions (session_id, user_id, status)
                         VALUES (%s, %s, %s)
                     """, (session_id, user_id, "active"))
                 conn.commit()
@@ -444,7 +444,7 @@ class TestDatabaseService:
                 
                 session_id = str(uuid.uuid4())
                 cursor.execute("""
-                    INSERT INTO sessions (session_id, user_id, status)
+                    INSERT INTO blackjack_sessions (session_id, user_id, status)
                     VALUES (%s, %s, %s)
                 """, (session_id, user_id, "active"))
                 
@@ -494,7 +494,7 @@ class TestDatabaseService:
                 
                 session_id = str(uuid.uuid4())
                 cursor.execute("""
-                    INSERT INTO sessions (session_id, user_id, status)
+                    INSERT INTO blackjack_sessions (session_id, user_id, status)
                     VALUES (%s, %s, %s)
                 """, (session_id, user_id, "active"))
                 conn.commit()
@@ -529,7 +529,7 @@ class TestDatabaseService:
                 
                 session_id = str(uuid.uuid4())
                 cursor.execute("""
-                    INSERT INTO sessions (session_id, user_id, status)
+                    INSERT INTO blackjack_sessions (session_id, user_id, status)
                     VALUES (%s, %s, %s)
                 """, (session_id, user_id, "active"))
                 
@@ -599,7 +599,7 @@ class TestDatabaseService:
                 
                 session_id = str(uuid.uuid4())
                 cursor.execute("""
-                    INSERT INTO sessions (session_id, user_id, status)
+                    INSERT INTO blackjack_sessions (session_id, user_id, status)
                     VALUES (%s, %s, %s)
                 """, (session_id, user_id, "active"))
                 conn.commit()
@@ -635,7 +635,7 @@ class TestDatabaseService:
                 
                 session_id = str(uuid.uuid4())
                 cursor.execute("""
-                    INSERT INTO sessions (session_id, user_id, status)
+                    INSERT INTO blackjack_sessions (session_id, user_id, status)
                     VALUES (%s, %s, %s)
                 """, (session_id, user_id, "active"))
                 conn.commit()
@@ -648,7 +648,7 @@ class TestDatabaseService:
         with get_test_database_connection() as conn:
             with conn.cursor() as cursor:
                 cursor.execute("""
-                    SELECT status FROM sessions WHERE session_id = %s
+                    SELECT status FROM blackjack_sessions WHERE session_id = %s
                 """, (session_id,))
                 status = cursor.fetchone()[0]
                 assert status == "completed"
@@ -672,7 +672,7 @@ class TestDatabaseService:
                 
                 session_id = str(uuid.uuid4())
                 cursor.execute("""
-                    INSERT INTO sessions (session_id, user_id, status)
+                    INSERT INTO blackjack_sessions (session_id, user_id, status)
                     VALUES (%s, %s, %s)
                 """, (session_id, user_id, "active"))
                 conn.commit()

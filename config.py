@@ -130,43 +130,43 @@ def load_config() -> Config:
     load_dotenv()
     
     try:
-        # Load database URL from environment
-        database_url = os.getenv('DATABASE_URL')
+        # Load database URL from environment (try both formats)
+        database_url = os.getenv('DATABASE__URL') or os.getenv('DATABASE_URL')
         if not database_url:
-            raise ValueError("DATABASE_URL environment variable is required")
+            raise ValueError("DATABASE__URL or DATABASE_URL environment variable is required")
         
         # Create database config
         database_config = DatabaseConfig(
             url=database_url,
-            pool_size=int(os.getenv('DB_POOL_SIZE', '5')),
-            timeout=int(os.getenv('DB_TIMEOUT', '30'))
+            pool_size=int(os.getenv('DATABASE__POOL_SIZE', os.getenv('DB_POOL_SIZE', '5'))),
+            timeout=int(os.getenv('DATABASE__TIMEOUT', os.getenv('DB_TIMEOUT', '30')))
         )
         
         # Create session config
         session_config = SessionConfig(
-            namespace=os.getenv('SESSION_NAMESPACE', 'blackjack-game'),
-            default_status=os.getenv('SESSION_DEFAULT_STATUS', 'active')
+            namespace=os.getenv('SESSION__NAMESPACE', os.getenv('SESSION_NAMESPACE', 'blackjack-game')),
+            default_status=os.getenv('SESSION__DEFAULT_STATUS', os.getenv('SESSION_DEFAULT_STATUS', 'active'))
         )
         
         # Create logging config
         logging_config = LoggingConfig(
-            level=os.getenv('LOG_LEVEL', 'INFO'),
-            format=os.getenv('LOG_FORMAT', '%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+            level=os.getenv('LOGGING__LEVEL', os.getenv('LOG_LEVEL', 'INFO')),
+            format=os.getenv('LOGGING__FORMAT', os.getenv('LOG_FORMAT', '%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
         )
         
         # Create game config
         game_config = GameConfig(
-            starting_chips=float(os.getenv('GAME_STARTING_CHIPS', '100.0')),
-            min_bet=float(os.getenv('GAME_MIN_BET', '1.0')),
-            max_bet=float(os.getenv('GAME_MAX_BET', '1000.0')),
-            shoe_threshold=int(os.getenv('GAME_SHOE_THRESHOLD', '50'))
+            starting_chips=float(os.getenv('GAME__STARTING_CHIPS', os.getenv('GAME_STARTING_CHIPS', '100.0'))),
+            min_bet=float(os.getenv('GAME__MIN_BET', os.getenv('GAME_MIN_BET', '1.0'))),
+            max_bet=float(os.getenv('GAME__MAX_BET', os.getenv('GAME_MAX_BET', '1000.0'))),
+            shoe_threshold=int(os.getenv('GAME__SHOE_THRESHOLD', os.getenv('GAME_SHOE_THRESHOLD', '50')))
         )
         
         # Create API config
         api_config = APIConfig(
-            google_genai_use_vertexai=os.getenv('GOOGLE_GENAI_USE_VERTEXAI', 'false'),
-            google_api_key=os.getenv('GOOGLE_API_KEY', ''),
-            xai_api_key=os.getenv('XAI_API_KEY', '')
+            google_genai_use_vertexai=os.getenv('API__GOOGLE_GENAI_USE_VERTEXAI', os.getenv('GOOGLE_GENAI_USE_VERTEXAI', 'false')),
+            google_api_key=os.getenv('API__GOOGLE_API_KEY', os.getenv('GOOGLE_API_KEY', '')),
+            xai_api_key=os.getenv('API__XAI_API_KEY', os.getenv('XAI_API_KEY', ''))
         )
         
         # Create main config

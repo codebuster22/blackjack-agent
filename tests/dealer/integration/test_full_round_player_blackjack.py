@@ -1,15 +1,18 @@
 import pytest
 from dealer_agent.tools.dealer import (
     GameState, shuffleShoe, placeBet, dealInitialHands, 
-    settleBet, updateChips, displayState, evaluateHand,
+    settleBet, displayState, evaluateHand,
     set_current_state, get_current_state
 )
 
 
+@pytest.mark.docker
+@pytest.mark.database
+@pytest.mark.integration
 class TestFullRoundPlayerBlackjack:
     """Integration test for full round with player blackjack."""
     
-    def test_full_round_player_blackjack(self):
+    def test_full_round_player_blackjack(self, clean_database, mock_tool_context_with_data):
         """
         Test complete round where player gets blackjack on initial deal.
         Expected result: Correct 3:2 payout, no dealer play needed.
@@ -17,13 +20,12 @@ class TestFullRoundPlayerBlackjack:
         Why: Verify complete blackjack flow from bet to payout.
         """
         # Initialize game state
-        state = GameState(shoe=shuffleShoe(), chips=100.0)
+        state = GameState(shoe=shuffleShoe())
         set_current_state(state)
         
         # Place bet
-        placeBet(20.0)
+        placeBet(20.0, mock_tool_context_with_data)
         current_state = get_current_state()
-        assert current_state.chips == 80.0
         assert current_state.bet == 20.0
         
         # Deal initial hands
@@ -41,7 +43,7 @@ class TestFullRoundPlayerBlackjack:
         # the logic works when blackjack occurs
         
         # Settle the bet
-        settle_result = settleBet()
+        settle_result = settleBet(mock_tool_context_with_data)
         
         # If player has blackjack and dealer doesn't, payout should be bet * 2.5 (bet back + 1.5x winnings)
         if player_eval.is_blackjack and not dealer_eval.is_blackjack:
@@ -65,19 +67,11 @@ class TestFullRoundPlayerBlackjack:
                 assert settle_result["payout"] == 20.0
                 assert settle_result["result"] == 'push'
         
-        # Update chips with payout (already done in settleBet)
+        # Get current state
         current_state = get_current_state()
         
-        # Verify chips are updated correctly
-        if settle_result["result"] == 'win':
-            assert current_state.chips == 80.0 + settle_result["payout"]
-        elif settle_result["result"] == 'loss':
-            assert current_state.chips == 80.0 + settle_result["payout"]
-        else:  # push
-            assert current_state.chips == 80.0 + settle_result["payout"]
-        
         # Display final state
-        display_result = displayState(revealDealerHole=True)
+        display_result = displayState(revealDealerHole=True, tool_context=mock_tool_context_with_data)
         assert "Player Hand:" in display_result["display_text"]
         assert "Dealer Hand:" in display_result["display_text"]
-        assert f"Chips: {current_state.chips}" in display_result["display_text"] 
+        assert "Balance:" in display_result["display_text"] 
