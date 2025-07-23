@@ -10,6 +10,10 @@ help:
 	@echo "  test-unit      - Run unit tests only"
 	@echo "  test-db        - Run database tests only"
 	@echo "  test-integration - Run integration tests only"
+	@echo "  test-cov       - Run all tests with coverage"
+	@echo "  test-cov-services - Run services tests with coverage"
+	@echo "  test-cov-user-manager - Run user_manager tests with coverage"
+	@echo "  coverage-report - Show coverage report and open HTML"
 	@echo "  docker-start   - Start test database"
 	@echo "  docker-stop    - Stop test database"
 	@echo "  docker-restart - Restart test database"
@@ -57,6 +61,25 @@ test-cov: setup
 	@echo "Running tests with coverage..."
 	@source .venv/bin/activate && python -m pytest --cov=services --cov=dealer_agent --cov-report=term-missing --cov-report=html -v
 	@$(MAKE) teardown
+
+# Run services tests with coverage
+test-cov-services: setup
+	@echo "Running services tests with coverage..."
+	@source .venv/bin/activate && python -m pytest tests/services/ --cov=services --cov-report=term-missing --cov-report=html -v
+	@$(MAKE) teardown
+
+# Run user_manager tests with coverage
+test-cov-user-manager: setup
+	@echo "Running user_manager tests with coverage..."
+	@source .venv/bin/activate && python -m pytest tests/services/integration/test_user_manager.py --cov=services.user_manager --cov-report=term-missing --cov-report=html -v
+	@$(MAKE) teardown
+
+# Show coverage report only (requires previous test run)
+coverage-report:
+	@echo "Generating coverage report..."
+	@source .venv/bin/activate && coverage report --show-missing
+	@echo "Opening HTML coverage report..."
+	@open htmlcov/index.html
 
 # Docker management
 docker-start:
