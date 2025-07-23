@@ -1,4 +1,5 @@
 from typing import List, Tuple, Literal, Optional, Dict, Any
+from google.adk.tools.tool_context import ToolContext
 import random
 from enum import Enum
 from pydantic import BaseModel, Field
@@ -59,6 +60,17 @@ class GameState(BaseModel):
     bet: float = 0.0
     chips: float = 100.0  # In-memory chips tracker
     history: List[dict] = Field(default_factory=list)
+
+
+# ----- Tool Context -----
+
+def get_current_session_state(tool_context: ToolContext) -> str:
+    """Get session ID from tool context."""
+    return tool_context.state.get("session_id")
+
+def get_current_user_id(tool_context: ToolContext) -> str:
+    """Get user ID from tool context."""
+    return tool_context.state.get("user_id")
 
 # ----- Game Initialization -----
 
@@ -262,6 +274,8 @@ def placeBet(amount: float) -> Dict[str, Any]:
             raise ValueError("Bet amount must be positive.")
         if state.chips < amount:
             raise ValueError("Insufficient chips to place bet.")
+        if amount % 5 != 0:
+            raise ValueError("Bet amount must be a multiple of 5.")
         state.chips -= amount
         state.bet = amount
         set_current_state(state)
