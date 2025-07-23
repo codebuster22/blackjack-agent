@@ -121,5 +121,7 @@ def dict_to_hand(hand_dict: Dict[str, Any]) -> Hand:
         Hand: Hand object
     """
     card_strings = hand_dict.get("cards", [])
+    if card_strings is None:
+        card_strings = []
     cards = [string_to_card(card_str) for card_str in card_strings]
     return Hand(cards=cards) 

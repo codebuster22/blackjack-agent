@@ -150,14 +150,13 @@ class DatabaseService:
                 with conn.cursor() as cursor:
                     cursor.execute("""
                         INSERT INTO rounds (
-                            round_id, session_id, round_number, bet_amount,
+                            round_id, session_id, bet_amount,
                             player_hand, dealer_hand, player_total, dealer_total,
                             outcome, payout, chips_before, chips_after, created_at
-                        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     """, (
                         round_data['round_id'],
                         round_data['session_id'],
-                        round_data['round_number'],
                         round_data['bet_amount'],
                         round_data['player_hand'],
                         round_data['dealer_hand'],
@@ -307,6 +306,7 @@ class DatabaseService:
         """Close database connections."""
         if self.pool:
             self.pool.closeall()
+            self._initialized = False
             logger.info("Database connections closed")
 
 # Global database service instance
