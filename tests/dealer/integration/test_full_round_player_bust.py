@@ -9,10 +9,11 @@ from dealer_agent.tools.dealer import (
 @pytest.mark.docker
 @pytest.mark.database
 @pytest.mark.integration
+@pytest.mark.asyncio
 class TestFullRoundPlayerBust:
     """Integration test for full round where player hits to bust."""
     
-    def test_full_round_player_bust(self, clean_database, mock_tool_context_with_data):
+    async def test_full_round_player_bust(self, clean_database, mock_tool_context_with_data):
         """
         Test complete round where player hits until bust.
         Expected result: Player loses, no dealer play needed.
@@ -24,7 +25,7 @@ class TestFullRoundPlayerBust:
         set_current_state(state)
         
         # Place bet
-        placeBet(25.0, mock_tool_context_with_data)
+        await placeBet(25.0, mock_tool_context_with_data)
         current_state = get_current_state()
         assert current_state.bet == 25.0
         
@@ -59,7 +60,7 @@ class TestFullRoundPlayerBust:
         assert len(current_state.shoe) < original_shoe_size
         
         # Settle the bet (player should lose due to bust)
-        settle_result = settleBet(mock_tool_context_with_data)
+        settle_result = await settleBet(mock_tool_context_with_data)
         
         # Player should lose due to bust
         assert settle_result["result"] == 'loss'
@@ -69,7 +70,7 @@ class TestFullRoundPlayerBust:
         current_state = get_current_state()
         
         # Display final state
-        display_result = displayState(revealDealerHole=True, tool_context=mock_tool_context_with_data)
+        display_result = await displayState(revealDealerHole=True, tool_context=mock_tool_context_with_data)
         assert "Player Hand:" in display_result["display_text"]
         assert "Dealer Hand:" in display_result["display_text"]
         assert "Balance:" in display_result["display_text"]

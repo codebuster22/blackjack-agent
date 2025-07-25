@@ -9,6 +9,7 @@ from dealer_agent.tools.dealer import (
 @pytest.mark.docker
 @pytest.mark.database
 @pytest.mark.integration
+@pytest.mark.asyncio
 class TestSettleBetIntegration:
     """Integration tests for settleBet function with database."""
     
@@ -16,7 +17,7 @@ class TestSettleBetIntegration:
         """Reset game state before each test."""
         reset_game_state()
     
-    def test_player_bust(self, clean_database, mock_tool_context_with_data):
+    async def test_player_bust(self, clean_database, mock_tool_context_with_data):
         """
         Test settlement when player busts.
         Expected result: Payout = 0, result = 'loss'.
@@ -40,9 +41,9 @@ class TestSettleBetIntegration:
         set_current_state(state)
         
         # Place bet first (required for database operations)
-        placeBet(100.0, mock_tool_context_with_data)
+        await placeBet(100.0, mock_tool_context_with_data)
         
-        result = settleBet(mock_tool_context_with_data)
+        result = await settleBet(mock_tool_context_with_data)
         
         assert result["success"] is True
         assert result["payout"] == 0.0
@@ -50,7 +51,7 @@ class TestSettleBetIntegration:
         assert result["round_saved"] is True
         assert result["session_completed"] is True
     
-    def test_dealer_bust(self, clean_database, mock_tool_context_with_data):
+    async def test_dealer_bust(self, clean_database, mock_tool_context_with_data):
         """
         Test settlement when dealer busts but player doesn't.
         Expected result: Payout = +bet*2, result = 'win'.
@@ -74,9 +75,9 @@ class TestSettleBetIntegration:
         set_current_state(state)
         
         # Place bet first
-        placeBet(50.0, mock_tool_context_with_data)
+        await placeBet(50.0, mock_tool_context_with_data)
         
-        result = settleBet(mock_tool_context_with_data)
+        result = await settleBet(mock_tool_context_with_data)
         
         assert result["success"] is True
         assert result["payout"] == 100.0  # bet back + equal winnings
@@ -84,7 +85,7 @@ class TestSettleBetIntegration:
         assert result["round_saved"] is True
         assert result["session_completed"] is True
     
-    def test_player_blackjack(self, clean_database, mock_tool_context_with_data):
+    async def test_player_blackjack(self, clean_database, mock_tool_context_with_data):
         """
         Test settlement when player has blackjack and dealer doesn't.
         Expected result: Payout = +bet*2.5, result = 'win'.
@@ -107,9 +108,9 @@ class TestSettleBetIntegration:
         set_current_state(state)
         
         # Place bet first
-        placeBet(100.0, mock_tool_context_with_data)
+        await placeBet(100.0, mock_tool_context_with_data)
         
-        result = settleBet(mock_tool_context_with_data)
+        result = await settleBet(mock_tool_context_with_data)
         
         assert result["success"] is True
         assert result["payout"] == 250.0  # bet back + 1.5x winnings
@@ -117,7 +118,7 @@ class TestSettleBetIntegration:
         assert result["round_saved"] is True
         assert result["session_completed"] is True
     
-    def test_dealer_blackjack(self, clean_database, mock_tool_context_with_data):
+    async def test_dealer_blackjack(self, clean_database, mock_tool_context_with_data):
         """
         Test settlement when dealer has blackjack and player doesn't.
         Expected result: Payout = 0, result = 'loss'.
@@ -140,9 +141,9 @@ class TestSettleBetIntegration:
         set_current_state(state)
         
         # Place bet first
-        placeBet(75.0, mock_tool_context_with_data)
+        await placeBet(75.0, mock_tool_context_with_data)
         
-        result = settleBet(mock_tool_context_with_data)
+        result = await settleBet(mock_tool_context_with_data)
         
         assert result["success"] is True
         assert result["payout"] == 0.0
@@ -150,7 +151,7 @@ class TestSettleBetIntegration:
         assert result["round_saved"] is True
         assert result["session_completed"] is True
     
-    def test_mutual_blackjack_push(self, clean_database, mock_tool_context_with_data):
+    async def test_mutual_blackjack_push(self, clean_database, mock_tool_context_with_data):
         """
         Test settlement when both player and dealer have blackjack.
         Expected result: Payout = +bet, result = 'push'.
@@ -173,9 +174,9 @@ class TestSettleBetIntegration:
         set_current_state(state)
         
         # Place bet first
-        placeBet(50.0, mock_tool_context_with_data)
+        await placeBet(50.0, mock_tool_context_with_data)
         
-        result = settleBet(mock_tool_context_with_data)
+        result = await settleBet(mock_tool_context_with_data)
         
         assert result["success"] is True
         assert result["payout"] == 50.0  # bet back
@@ -183,7 +184,7 @@ class TestSettleBetIntegration:
         assert result["round_saved"] is True
         assert result["session_completed"] is True
     
-    def test_higher_total_wins(self, clean_database, mock_tool_context_with_data):
+    async def test_higher_total_wins(self, clean_database, mock_tool_context_with_data):
         """
         Test settlement when player has higher total.
         Expected result: Payout = +bet*2, result = 'win'.
@@ -206,9 +207,9 @@ class TestSettleBetIntegration:
         set_current_state(state)
         
         # Place bet first
-        placeBet(25.0, mock_tool_context_with_data)
+        await placeBet(25.0, mock_tool_context_with_data)
         
-        result = settleBet(mock_tool_context_with_data)
+        result = await settleBet(mock_tool_context_with_data)
         
         assert result["success"] is True
         assert result["payout"] == 50.0  # bet back + equal winnings
@@ -216,7 +217,8 @@ class TestSettleBetIntegration:
         assert result["round_saved"] is True
         assert result["session_completed"] is True
     
-    def test_lower_total_loses(self, clean_database, mock_tool_context_with_data):
+    @pytest.mark.asyncio
+    async def test_lower_total_loses(self, clean_database, mock_tool_context_with_data):
         """
         Test settlement when player has lower total.
         Expected result: Payout = 0, result = 'loss'.
@@ -239,9 +241,9 @@ class TestSettleBetIntegration:
         set_current_state(state)
         
         # Place bet first
-        placeBet(40.0, mock_tool_context_with_data)
+        await placeBet(40.0, mock_tool_context_with_data)
         
-        result = settleBet(mock_tool_context_with_data)
+        result = await settleBet(mock_tool_context_with_data)
         
         assert result["success"] is True
         assert result["payout"] == 0.0
@@ -249,7 +251,7 @@ class TestSettleBetIntegration:
         assert result["round_saved"] is True
         assert result["session_completed"] is True
     
-    def test_equal_total_push(self, clean_database, mock_tool_context_with_data):
+    async def test_equal_total_push(self, clean_database, mock_tool_context_with_data):
         """
         Test settlement when player and dealer have equal totals.
         Expected result: Payout = +bet, result = 'push'.
@@ -272,9 +274,9 @@ class TestSettleBetIntegration:
         set_current_state(state)
         
         # Place bet first
-        placeBet(30.0, mock_tool_context_with_data)
+        await placeBet(30.0, mock_tool_context_with_data)
         
-        result = settleBet(mock_tool_context_with_data)
+        result = await settleBet(mock_tool_context_with_data)
         
         assert result["success"] is True
         assert result["payout"] == 30.0  # bet back
@@ -282,7 +284,7 @@ class TestSettleBetIntegration:
         assert result["round_saved"] is True
         assert result["session_completed"] is True
     
-    def test_missing_user_id_raises_error(self, clean_database):
+    async def test_missing_user_id_raises_error(self, clean_database):
         """
         Test that missing user_id in ToolContext raises error.
         Expected result: Error response with session error.
@@ -311,12 +313,12 @@ class TestSettleBetIntegration:
         )
         set_current_state(state)
         
-        result = settleBet(mock_context)
+        result = await settleBet(mock_context)
         
         assert result["success"] is False
         assert "session error" in result["error"].lower()
     
-    def test_missing_session_id_raises_error(self, clean_database):
+    async def test_missing_session_id_raises_error(self, clean_database):
         """
         Test that missing session_id in ToolContext raises error.
         Expected result: Error response with session error.
@@ -345,7 +347,7 @@ class TestSettleBetIntegration:
         )
         set_current_state(state)
         
-        result = settleBet(mock_context)
+        result = await settleBet(mock_context)
         
         assert result["success"] is False
         assert "session error" in result["error"].lower() 

@@ -13,8 +13,6 @@ from services.service_manager import service_manager
 # check if user exists, if not, create user, unique ID is twitter username
 configValues = get_config()
 
-# Initialize services
-service_manager.initialize()
 # Game parameters
 app_name = "blackjack"
 
@@ -36,12 +34,12 @@ async def ensure_user_and_session() -> Session:
     """
     try:
         # Check if user exists, create if not
-        service_manager.user_manager.create_user_if_not_exists(user_id)
+        await service_manager.user_manager.create_user_if_not_exists(user_id)
 
-        session_id = service_manager.user_manager.create_session(user_id)
+        session_id = await service_manager.user_manager.create_session(user_id)
         
         # Get user's current balance
-        current_balance = service_manager.user_manager.get_user_balance(user_id)
+        current_balance = await service_manager.user_manager.get_user_balance(user_id)
         print(f"Current balance: ${current_balance}")
         
         # Create session state with user_id
@@ -98,6 +96,9 @@ async def interactive_chat():
     print("=" * 50)
     
     try:
+        # Initialize services
+        await service_manager.initialize()
+        
         # Initialize user and session
         session = await ensure_user_and_session()
         print("✅ Session initialized successfully!")

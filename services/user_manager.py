@@ -7,8 +7,8 @@ import uuid
 import logging
 from typing import Optional, Dict, Any
 from datetime import datetime, timedelta
-import psycopg2
-from psycopg2.extras import RealDictCursor
+import psycopg
+from psycopg.rows import dict_row
 
 from .models import User, Session, Round
 from config import get_config
@@ -23,7 +23,7 @@ class UserManager:
     def __init__(self, db_service):
         self.db_service = db_service
     
-    def create_user_if_not_exists(self, username: str) -> str:
+    async def create_user_if_not_exists(self, username: str) -> str:
         """
         Create user if not exists, return username.
         
@@ -38,21 +38,22 @@ class UserManager:
         """
         try:
             # Check if user exists
-            existing_user = self._get_user_by_username(username)
+            existing_user = await self._get_user_by_username(username)
             if existing_user:
                 return username
             
             # Create new user
-            with self.db_service.get_connection() as conn:
-                with conn.cursor() as cursor:
-                    cursor.execute("""
+            async with self.db_service.get_connection() as conn:
+                async with conn.cursor() as cursor:
+                    await cursor.execute("""
                         INSERT INTO users (username, current_balance)
                         VALUES (%s, %s)
                         RETURNING user_id
                     """, (username, get_config().game.starting_chips))
                     
-                    user_id = cursor.fetchone()[0]
-                    conn.commit()
+                    result = await cursor.fetchone()
+                    user_id = result[0]
+                    await conn.commit()
                     
                     logger.info(f"Created new user: {username} with ID: {user_id}")
                     return username
@@ -61,7 +62,7 @@ class UserManager:
             logger.error(f"Failed to create user {username}: {e}")
             raise ValueError(f"Failed to create user: {e}")
     
-    def _get_user_id_by_username(self, username: str) -> str:
+    async def _get_user_id_by_username(self, username: str) -> str:
         """
         Get user UUID by username.
         
@@ -74,12 +75,12 @@ class UserManager:
         Raises:
             ValueError: If user not found
         """
-        user = self._get_user_by_username(username)
+        user = await self._get_user_by_username(username)
         if not user:
             raise ValueError(f"User not found: {username}")
         return str(user['user_id'])
 
-    def get_user_balance(self, username: str) -> float:
+    async def get_user_balance(self, username: str) -> float:
         """
         Get current user balance.
         
@@ -93,14 +94,14 @@ class UserManager:
             ValueError: If user not found
         """
         try:
-            user_id = self._get_user_id_by_username(username)
-            with self.db_service.get_connection() as conn:
-                with conn.cursor() as cursor:
-                    cursor.execute("""
+            user_id = await self._get_user_id_by_username(username)
+            async with self.db_service.get_connection() as conn:
+                async with conn.cursor() as cursor:
+                    await cursor.execute("""
                         SELECT current_balance FROM users WHERE user_id = %s
                     """, (user_id,))
                     
-                    result = cursor.fetchone()
+                    result = await cursor.fetchone()
                     if not result:
                         raise ValueError(f"User not found: {username}")
                     
@@ -110,7 +111,7 @@ class UserManager:
             logger.error(f"Failed to get balance for user {username}: {e}")
             raise ValueError(f"Failed to get user balance: {e}")
     
-    def debit_user_balance(self, username: str, amount: float) -> bool:
+    async def debit_user_balance(self, username: str, amount: float) -> bool:
         """
         Debit user balance atomically using PostgreSQL function.
         
@@ -125,28 +126,28 @@ class UserManager:
             raise ValueError("Amount to debit must be greater than 0")
         
         try:
-            user_id = self._get_user_id_by_username(username)
-            with self.db_service.get_connection() as conn:
-                with conn.cursor() as cursor:
-                    cursor.execute("""
-                        SELECT debit_user_balance(%s, %s)
+            user_id = await self._get_user_id_by_username(username)
+            async with self.db_service.get_connection() as conn:
+                async with conn.cursor() as cursor:
+                    await cursor.execute("""
+                        SELECT debit_user_balance(%s::UUID, %s::DECIMAL(15,2))
                     """, (user_id, amount))
                     
-                    result = cursor.fetchone()[0]
-                    conn.commit()
+                    result = await cursor.fetchone()
+                    await conn.commit()
                     
-                    if result:
+                    if result[0]:
                         logger.info(f"Debited {amount} from user {username}")
                     else:
                         logger.warning(f"Insufficient balance for user {username} to debit {amount}")
                     
-                    return bool(result)
+                    return bool(result[0])
                     
         except Exception as e:
-            logger.error(f"Failed to debit balance for user {user_id}: {e}")
+            logger.error(f"Failed to debit balance for user {username}: {e}")
             return False
     
-    def credit_user_balance(self, username: str, amount: float) -> bool:
+    async def credit_user_balance(self, username: str, amount: float) -> bool:
         """
         Credit user balance atomically using PostgreSQL function.
         
@@ -161,28 +162,28 @@ class UserManager:
             raise ValueError("Amount to credit must be greater than 0")
 
         try:
-            user_id = self._get_user_id_by_username(username)
-            with self.db_service.get_connection() as conn:
-                with conn.cursor() as cursor:
-                    cursor.execute("""
-                        SELECT credit_user_balance(%s, %s)
+            user_id = await self._get_user_id_by_username(username)
+            async with self.db_service.get_connection() as conn:
+                async with conn.cursor() as cursor:
+                    await cursor.execute("""
+                        SELECT credit_user_balance(%s::UUID, %s::DECIMAL(15,2))
                     """, (user_id, amount))
                     
-                    result = cursor.fetchone()[0]
-                    conn.commit()
+                    result = await cursor.fetchone()
+                    await conn.commit()
                     
-                    if result:
+                    if result[0]:
                         logger.info(f"Credited {amount} to user {username}")
                     else:
                         logger.error(f"Failed to credit {amount} to user {username}")
                     
-                    return bool(result)
+                    return bool(result[0])
                     
         except Exception as e:
             logger.error(f"Failed to credit balance for user {username}: {e}")
             return False
     
-    def verify_user_balance(self, username: str, required_amount: float) -> bool:
+    async def verify_user_balance(self, username: str, required_amount: float) -> bool:
         """
         Verify user has sufficient balance.
         
@@ -194,13 +195,13 @@ class UserManager:
             bool: True if sufficient balance, False otherwise
         """
         try:
-            current_balance = self.get_user_balance(username)
+            current_balance = await self.get_user_balance(username)
             return current_balance >= required_amount
         except Exception as e:
             logger.error(f"Failed to verify balance for user {username}: {e}")
             return False
     
-    def create_session(self, username: str) -> str:
+    async def create_session(self, username: str) -> str:
         """
         Create new session with UUID5 for user.
         
@@ -211,21 +212,21 @@ class UserManager:
             str: The session ID
         """
         try:
-            user_id = self._get_user_id_by_username(username)
+            user_id = await self._get_user_id_by_username(username)
             
             # Generate deterministic UUID5 for session
             timestamp = datetime.now().isoformat()
             namespace_uuid = uuid.uuid5(uuid.NAMESPACE_URL, "blackjack")
             session_id = str(uuid.uuid5(namespace_uuid, f"{user_id}:{timestamp}"))
             
-            with self.db_service.get_connection() as conn:
-                with conn.cursor() as cursor:
-                    cursor.execute("""
+            async with self.db_service.get_connection() as conn:
+                async with conn.cursor() as cursor:
+                    await cursor.execute("""
                         INSERT INTO blackjack_sessions (session_id, user_id, status)
                         VALUES (%s, %s, 'active')
                     """, (session_id, user_id))
                     
-                    conn.commit()
+                    await conn.commit()
                     logger.info(f"Created session {session_id} for user {username}")
                     return session_id
                     
@@ -233,7 +234,7 @@ class UserManager:
             logger.error(f"Failed to create session for user {username}: {e}")
             raise ValueError(f"Failed to create session: {e}")
     
-    def complete_session(self, session_id: str) -> bool:
+    async def complete_session(self, session_id: str) -> bool:
         """
         Mark session as completed.
         
@@ -244,14 +245,14 @@ class UserManager:
             bool: True if successful
         """
         try:
-            with self.db_service.get_connection() as conn:
-                with conn.cursor() as cursor:
-                    cursor.execute("""
+            async with self.db_service.get_connection() as conn:
+                async with conn.cursor() as cursor:
+                    await cursor.execute("""
                         UPDATE blackjack_sessions SET status = 'completed' 
                         WHERE session_id = %s
                     """, (session_id,))
                     
-                    conn.commit()
+                    await conn.commit()
                     logger.info(f"Completed session {session_id}")
                     return True
                     
@@ -259,7 +260,7 @@ class UserManager:
             logger.error(f"Failed to complete session {session_id}: {e}")
             return False
     
-    def abandon_session(self, session_id: str) -> bool:
+    async def abandon_session(self, session_id: str) -> bool:
         """
         Mark session as abandoned.
         
@@ -270,14 +271,14 @@ class UserManager:
             bool: True if successful
         """
         try:
-            with self.db_service.get_connection() as conn:
-                with conn.cursor() as cursor:
-                    cursor.execute("""
+            async with self.db_service.get_connection() as conn:
+                async with conn.cursor() as cursor:
+                    await cursor.execute("""
                         UPDATE blackjack_sessions SET status = 'abandoned' 
                         WHERE session_id = %s
                     """, (session_id,))
                     
-                    conn.commit()
+                    await conn.commit()
                     logger.info(f"Abandoned session {session_id}")
                     return True
                     
@@ -285,7 +286,7 @@ class UserManager:
             logger.error(f"Failed to abandon session {session_id}: {e}")
             return False
     
-    def cleanup_abandoned_sessions(self) -> int:
+    async def cleanup_abandoned_sessions(self) -> int:
         """
         Mark sessions as abandoned after 1 hour of inactivity.
         
@@ -295,9 +296,9 @@ class UserManager:
         try:
             one_hour_ago = datetime.now() - timedelta(hours=1)
             
-            with self.db_service.get_connection() as conn:
-                with conn.cursor() as cursor:
-                    cursor.execute("""
+            async with self.db_service.get_connection() as conn:
+                async with conn.cursor() as cursor:
+                    await cursor.execute("""
                         UPDATE blackjack_sessions 
                         SET status = 'abandoned' 
                         WHERE status = 'active' 
@@ -305,7 +306,7 @@ class UserManager:
                     """, (one_hour_ago,))
                     
                     abandoned_count = cursor.rowcount
-                    conn.commit()
+                    await conn.commit()
                     
                     if abandoned_count > 0:
                         logger.info(f"Abandoned {abandoned_count} inactive sessions")
@@ -316,7 +317,7 @@ class UserManager:
             logger.error(f"Failed to cleanup abandoned sessions: {e}")
             return 0
     
-    def _get_user_by_username(self, username: str) -> Optional[Dict[str, Any]]:
+    async def _get_user_by_username(self, username: str) -> Optional[Dict[str, Any]]:
         """
         Get user by username.
         
@@ -327,13 +328,13 @@ class UserManager:
             Dict: User data or None if not found
         """
         try:
-            with self.db_service.get_connection() as conn:
-                with conn.cursor(cursor_factory=RealDictCursor) as cursor:
-                    cursor.execute("""
+            async with self.db_service.get_connection() as conn:
+                async with conn.cursor(row_factory=dict_row) as cursor:
+                    await cursor.execute("""
                         SELECT * FROM users WHERE username = %s
                     """, (username,))
                     
-                    result = cursor.fetchone()
+                    result = await cursor.fetchone()
                     return dict(result) if result else None
                     
         except Exception as e:

@@ -9,6 +9,7 @@ from dealer_agent.tools.dealer import (
 @pytest.mark.docker
 @pytest.mark.database
 @pytest.mark.integration
+@pytest.mark.asyncio
 class TestGameStatusIntegration:
     """Integration tests for getGameStatus function with database."""
     
@@ -16,7 +17,7 @@ class TestGameStatusIntegration:
         """Reset game state before each test."""
         reset_game_state()
     
-    def test_get_game_status_with_balance(self, clean_database, mock_tool_context_with_data):
+    async def test_get_game_status_with_balance(self, clean_database, mock_tool_context_with_data):
         """
         Test getting game status with balance information from database.
         Expected result: Status includes balance information.
@@ -38,7 +39,7 @@ class TestGameStatusIntegration:
         )
         set_current_state(state)
         
-        result = getGameStatus(tool_context=mock_tool_context_with_data)
+        result = await getGameStatus(tool_context=mock_tool_context_with_data)
         
         assert result["success"] is True
         assert "game_state" in result
@@ -67,7 +68,7 @@ class TestGameStatusIntegration:
         assert dealer_hand["is_bust"] is False
         assert len(dealer_hand["cards"]) == 2
     
-    def test_get_game_status_without_balance(self, clean_database):
+    async def test_get_game_status_without_balance(self, clean_database):
         """
         Test getting game status without balance information.
         Expected result: Status without balance information.
@@ -89,7 +90,7 @@ class TestGameStatusIntegration:
         )
         set_current_state(state)
         
-        result = getGameStatus(tool_context=None)
+        result = await getGameStatus(tool_context=None)
         
         assert result["success"] is True
         assert "game_state" in result
@@ -104,7 +105,7 @@ class TestGameStatusIntegration:
         assert "player_hand" in game_state
         assert "dealer_hand" in game_state
     
-    def test_get_game_status_empty_hands(self, clean_database, mock_tool_context_with_data):
+    async def test_get_game_status_empty_hands(self, clean_database, mock_tool_context_with_data):
         """
         Test getting game status with empty hands.
         Expected result: Status shows empty hands correctly.
@@ -120,7 +121,7 @@ class TestGameStatusIntegration:
         )
         set_current_state(state)
         
-        result = getGameStatus(tool_context=mock_tool_context_with_data)
+        result = await getGameStatus(tool_context=mock_tool_context_with_data)
         
         assert result["success"] is True
         assert "game_state" in result
@@ -145,7 +146,7 @@ class TestGameStatusIntegration:
         assert dealer_hand["is_bust"] is False
         assert len(dealer_hand["cards"]) == 0
     
-    def test_get_game_status_player_bust(self, clean_database, mock_tool_context_with_data):
+    async def test_get_game_status_player_bust(self, clean_database, mock_tool_context_with_data):
         """
         Test getting game status when player has bust.
         Expected result: Status shows bust information.
@@ -168,7 +169,7 @@ class TestGameStatusIntegration:
         )
         set_current_state(state)
         
-        result = getGameStatus(tool_context=mock_tool_context_with_data)
+        result = await getGameStatus(tool_context=mock_tool_context_with_data)
         
         assert result["success"] is True
         
@@ -179,7 +180,7 @@ class TestGameStatusIntegration:
         assert player_hand["is_blackjack"] is False
         assert len(player_hand["cards"]) == 3
     
-    def test_get_game_status_dealer_blackjack(self, clean_database, mock_tool_context_with_data):
+    async def test_get_game_status_dealer_blackjack(self, clean_database, mock_tool_context_with_data):
         """
         Test getting game status when dealer has blackjack.
         Expected result: Status shows dealer blackjack information.
@@ -201,7 +202,7 @@ class TestGameStatusIntegration:
         )
         set_current_state(state)
         
-        result = getGameStatus(tool_context=mock_tool_context_with_data)
+        result = await getGameStatus(tool_context=mock_tool_context_with_data)
         
         assert result["success"] is True
         
@@ -212,7 +213,7 @@ class TestGameStatusIntegration:
         assert dealer_hand["is_bust"] is False
         assert len(dealer_hand["cards"]) == 2
     
-    def test_get_game_status_soft_hands(self, clean_database, mock_tool_context_with_data):
+    async def test_get_game_status_soft_hands(self, clean_database, mock_tool_context_with_data):
         """
         Test getting game status with soft hands.
         Expected result: Status shows soft hand information.
@@ -234,7 +235,7 @@ class TestGameStatusIntegration:
         )
         set_current_state(state)
         
-        result = getGameStatus(tool_context=mock_tool_context_with_data)
+        result = await getGameStatus(tool_context=mock_tool_context_with_data)
         
         assert result["success"] is True
         
@@ -254,7 +255,7 @@ class TestGameStatusIntegration:
         assert dealer_hand["is_blackjack"] is False
         assert dealer_hand["is_bust"] is False
     
-    def test_get_game_status_remaining_cards_accuracy(self, clean_database, mock_tool_context_with_data):
+    async def test_get_game_status_remaining_cards_accuracy(self, clean_database, mock_tool_context_with_data):
         """
         Test that remaining cards count is accurate.
         Expected result: Remaining cards count reflects actual shoe state.
@@ -281,7 +282,7 @@ class TestGameStatusIntegration:
         )
         set_current_state(state)
         
-        result = getGameStatus(tool_context=mock_tool_context_with_data)
+        result = await getGameStatus(tool_context=mock_tool_context_with_data)
         
         assert result["success"] is True
         
@@ -290,7 +291,7 @@ class TestGameStatusIntegration:
         expected_remaining = 312 - 4
         assert game_state["remaining_cards"] == expected_remaining
     
-    def test_get_game_status_message_content(self, clean_database, mock_tool_context_with_data):
+    async def test_get_game_status_message_content(self, clean_database, mock_tool_context_with_data):
         """
         Test that status message is informative.
         Expected result: Message describes the status retrieval.
@@ -312,14 +313,14 @@ class TestGameStatusIntegration:
         )
         set_current_state(state)
         
-        result = getGameStatus(tool_context=mock_tool_context_with_data)
+        result = await getGameStatus(tool_context=mock_tool_context_with_data)
         
         assert result["success"] is True
         assert "message" in result
         assert "status" in result["message"].lower()
         assert "retrieved" in result["message"].lower()
     
-    def test_get_game_status_error_handling(self, clean_database, mock_tool_context_with_data):
+    async def test_get_game_status_error_handling(self, clean_database, mock_tool_context_with_data):
         """
         Test game status error handling.
         Expected result: Proper error response when something goes wrong.
@@ -342,7 +343,7 @@ class TestGameStatusIntegration:
         )
         set_current_state(state)
         
-        result = getGameStatus(tool_context=mock_tool_context_with_data)
+        result = await getGameStatus(tool_context=mock_tool_context_with_data)
         
         # Should either succeed or return a proper error response
         assert "success" in result

@@ -8,10 +8,11 @@ from dealer_agent.tools.dealer import (
 @pytest.mark.docker
 @pytest.mark.database
 @pytest.mark.integration
+@pytest.mark.asyncio
 class TestShoeDepletionReshuffle:
     """Integration test for shoe depletion and reshuffle mid-game."""
     
-    def test_shoe_depletion_and_reshuffle(self, clean_database, mock_tool_context_with_data):
+    async def test_shoe_depletion_and_reshuffle(self, clean_database, mock_tool_context_with_data):
         """
         Test shoe depletion and automatic reshuffle between hands.
         Expected result: Fresh 312-card shoe after reset when below threshold.
@@ -25,7 +26,7 @@ class TestShoeDepletionReshuffle:
         assert initial_shoe_size == 312
         
         # Place bet and deal first hand
-        placeBet(20.0, mock_tool_context_with_data)
+        await placeBet(20.0, mock_tool_context_with_data)
         dealInitialHands()
         current_state = get_current_state()
         
@@ -60,7 +61,7 @@ class TestShoeDepletionReshuffle:
         assert current_state.bet == 0.0
         
         # Place bet for second hand
-        placeBet(25.0, mock_tool_context_with_data)
+        await placeBet(25.0, mock_tool_context_with_data)
         current_state = get_current_state()
         
         # Deal second hand
@@ -73,7 +74,7 @@ class TestShoeDepletionReshuffle:
         # Verify we can continue playing with the fresh shoe
         assert len(current_state.shoe) > threshold
     
-    def test_multiple_hands_with_reshuffle(self, clean_database, mock_tool_context_with_data):
+    async def test_multiple_hands_with_reshuffle(self, clean_database, mock_tool_context_with_data):
         """
         Test multiple hands with automatic reshuffle when needed.
         Expected result: Game continues seamlessly with fresh shoes.
@@ -89,7 +90,7 @@ class TestShoeDepletionReshuffle:
         for hand_num in range(5):
             # Place bet
             bet_amount = 10.0
-            placeBet(bet_amount, mock_tool_context_with_data)
+            await placeBet(bet_amount, mock_tool_context_with_data)
             
             # Deal hands
             dealInitialHands()
@@ -120,7 +121,7 @@ class TestShoeDepletionReshuffle:
             assert current_state.bet == 0.0
         
         # Verify we can still play after multiple reshuffles
-        placeBet(15.0, mock_tool_context_with_data)
+        await placeBet(15.0, mock_tool_context_with_data)
         dealInitialHands()
         current_state = get_current_state()
         assert len(current_state.player_hand.cards) == 2

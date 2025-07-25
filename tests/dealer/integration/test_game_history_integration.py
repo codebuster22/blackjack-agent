@@ -3,13 +3,15 @@ from unittest.mock import Mock
 from dealer_agent.tools.dealer import (
     getGameHistory, initialize_game, placeBet, dealInitialHands, 
     settleBet, resetForNextHand, reset_game_state, GameState, Hand, 
-    Card, Suit, Rank, shuffleShoe, set_current_state
+    Card, Suit, Rank, shuffleShoe, set_current_state, processDealerPlay, 
+    evaluateHand, get_current_state
 )
 
 
 @pytest.mark.docker
 @pytest.mark.database
 @pytest.mark.integration
+@pytest.mark.asyncio
 class TestGameHistoryIntegration:
     """Integration tests for getGameHistory function with database."""
     
@@ -17,7 +19,7 @@ class TestGameHistoryIntegration:
         """Reset game state before each test."""
         reset_game_state()
     
-    def test_get_game_history_empty(self, clean_database, mock_tool_context_with_data):
+    async def test_get_game_history_empty(self, clean_database, mock_tool_context_with_data):
         """
         Test getting history when no rounds have been played.
         Expected result: Empty history with zero statistics.
@@ -25,11 +27,11 @@ class TestGameHistoryIntegration:
         Why: Verify empty history handling works correctly.
         """
         # Initialize game
-        init_result = initialize_game(mock_tool_context_with_data)
+        init_result = await initialize_game(mock_tool_context_with_data)
         assert init_result["success"] is True
         
         # Get history
-        result = getGameHistory(mock_tool_context_with_data)
+        result = await getGameHistory(mock_tool_context_with_data)
         
         assert result["success"] is True
         assert result["total_rounds"] == 0
@@ -43,7 +45,7 @@ class TestGameHistoryIntegration:
         assert result["statistics"]["total_bet"] == 0.0
         assert result["statistics"]["current_balance"] == 100.0  # Starting balance
     
-    def test_get_game_history_after_single_round(self, clean_database, mock_tool_context_with_data):
+    async def test_get_game_history_after_single_round(self, clean_database, mock_tool_context_with_data):
         """
         Test getting history after playing one round.
         Expected result: History contains one round with proper data.
@@ -51,24 +53,34 @@ class TestGameHistoryIntegration:
         Why: Verify single round history tracking works correctly.
         """
         # Initialize game
-        init_result = initialize_game(mock_tool_context_with_data)
+        init_result = await initialize_game(mock_tool_context_with_data)
         assert init_result["success"] is True
         
         # Play a complete round
-        bet_result = placeBet(25.0, mock_tool_context_with_data)
+        bet_result = await placeBet(25.0, mock_tool_context_with_data)
         assert bet_result["success"] is True
         
         deal_result = dealInitialHands()
         assert deal_result["success"] is True
         
-        settle_result = settleBet(mock_tool_context_with_data)
+        # Check if dealer needs to play
+        current_state = get_current_state()
+        player_eval = evaluateHand(current_state.player_hand)
+        dealer_eval = evaluateHand(current_state.dealer_hand)
+        
+        # If neither player has blackjack and dealer hasn't finished, run dealer play
+        if not player_eval.is_blackjack and not dealer_eval.is_blackjack and dealer_eval.total < 17:
+            dealer_result = processDealerPlay()
+            assert dealer_result["success"] is True
+        
+        settle_result = await settleBet(mock_tool_context_with_data)
         assert settle_result["success"] is True
         
         reset_result = resetForNextHand()
         assert reset_result["success"] is True
         
         # Get history
-        history_result = getGameHistory(mock_tool_context_with_data)
+        history_result = await getGameHistory(mock_tool_context_with_data)
         
         assert history_result["success"] is True
         assert history_result["total_rounds"] == 0  # Currently returns empty history
@@ -93,7 +105,7 @@ class TestGameHistoryIntegration:
         assert stats["wins"] + stats["losses"] + stats["pushes"] == 0
         assert stats["current_balance"] >= 0.0  # Should be updated based on outcome
     
-    def test_get_game_history_multiple_rounds(self, clean_database, mock_tool_context_with_data):
+    async def test_get_game_history_multiple_rounds(self, clean_database, mock_tool_context_with_data):
         """
         Test getting history after multiple rounds.
         Expected result: History contains multiple rounds with proper data.
@@ -101,25 +113,35 @@ class TestGameHistoryIntegration:
         Why: Verify multiple round history tracking works correctly.
         """
         # Initialize game
-        init_result = initialize_game(mock_tool_context_with_data)
+        init_result = await initialize_game(mock_tool_context_with_data)
         assert init_result["success"] is True
         
         # Play multiple rounds
         for i in range(3):
-            bet_result = placeBet(20.0, mock_tool_context_with_data)
+            bet_result = await placeBet(20.0, mock_tool_context_with_data)
             assert bet_result["success"] is True
             
             deal_result = dealInitialHands()
             assert deal_result["success"] is True
             
-            settle_result = settleBet(mock_tool_context_with_data)
+            # Check if dealer needs to play
+            current_state = get_current_state()
+            player_eval = evaluateHand(current_state.player_hand)
+            dealer_eval = evaluateHand(current_state.dealer_hand)
+            
+            # If neither player has blackjack and dealer hasn't finished, run dealer play
+            if not player_eval.is_blackjack and not dealer_eval.is_blackjack and dealer_eval.total < 17:
+                dealer_result = processDealerPlay()
+                assert dealer_result["success"] is True
+            
+            settle_result = await settleBet(mock_tool_context_with_data)
             assert settle_result["success"] is True
             
             reset_result = resetForNextHand()
             assert reset_result["success"] is True
         
         # Get history
-        history_result = getGameHistory(mock_tool_context_with_data)
+        history_result = await getGameHistory(mock_tool_context_with_data)
         
         assert history_result["success"] is True
         assert history_result["total_rounds"] == 0  # Currently returns empty history
@@ -140,7 +162,7 @@ class TestGameHistoryIntegration:
         assert stats["wins"] + stats["losses"] + stats["pushes"] == 0
         assert stats["win_rate"] >= 0.0 and stats["win_rate"] <= 1.0
     
-    def test_get_game_history_statistics_calculation(self, clean_database, mock_tool_context_with_data):
+    async def test_get_game_history_statistics_calculation(self, clean_database, mock_tool_context_with_data):
         """
         Test that statistics are calculated correctly from history.
         Expected result: Statistics reflect actual game outcomes.
@@ -148,7 +170,7 @@ class TestGameHistoryIntegration:
         Why: Verify statistical calculations are accurate.
         """
         # Initialize game
-        init_result = initialize_game(mock_tool_context_with_data)
+        init_result = await initialize_game(mock_tool_context_with_data)
         assert init_result["success"] is True
         
         # Play rounds and track expected outcomes
@@ -162,13 +184,23 @@ class TestGameHistoryIntegration:
             bet_amount = 15.0
             total_bet += bet_amount
             
-            bet_result = placeBet(bet_amount, mock_tool_context_with_data)
+            bet_result = await placeBet(bet_amount, mock_tool_context_with_data)
             assert bet_result["success"] is True
             
             deal_result = dealInitialHands()
             assert deal_result["success"] is True
             
-            settle_result = settleBet(mock_tool_context_with_data)
+            # Check if dealer needs to play
+            current_state = get_current_state()
+            player_eval = evaluateHand(current_state.player_hand)
+            dealer_eval = evaluateHand(current_state.dealer_hand)
+            
+            # If neither player has blackjack and dealer hasn't finished, run dealer play
+            if not player_eval.is_blackjack and not dealer_eval.is_blackjack and dealer_eval.total < 17:
+                dealer_result = processDealerPlay()
+                assert dealer_result["success"] is True
+            
+            settle_result = await settleBet(mock_tool_context_with_data)
             assert settle_result["success"] is True
             
             # Track outcome
@@ -183,7 +215,7 @@ class TestGameHistoryIntegration:
             assert reset_result["success"] is True
         
         # Get history
-        history_result = getGameHistory(mock_tool_context_with_data)
+        history_result = await getGameHistory(mock_tool_context_with_data)
         
         assert history_result["success"] is True
         
@@ -196,7 +228,7 @@ class TestGameHistoryIntegration:
         assert stats["total_bet"] == 0.0
         assert stats["win_rate"] == 0.0
     
-    def test_get_game_history_missing_user_id_raises_error(self, clean_database):
+    async def test_get_game_history_missing_user_id_raises_error(self, clean_database):
         """
         Test that missing user_id in ToolContext raises error.
         Expected result: Error response with session error.
@@ -210,12 +242,12 @@ class TestGameHistoryIntegration:
             # Missing user_id
         }
         
-        result = getGameHistory(mock_context)
+        result = await getGameHistory(mock_context)
         
         assert result["success"] is False
         assert "session error" in result["error"].lower()
     
-    def test_get_game_history_database_error_handling(self, clean_database, mock_tool_context_with_data):
+    async def test_get_game_history_database_error_handling(self, clean_database, mock_tool_context_with_data):
         """
         Test that database errors are handled gracefully.
         Expected result: Error response with database error message.
@@ -224,7 +256,7 @@ class TestGameHistoryIntegration:
         """
         # This test would require mocking the database service to simulate failures
         # For now, we'll test with valid context and ensure it doesn't crash
-        result = getGameHistory(mock_tool_context_with_data)
+        result = await getGameHistory(mock_tool_context_with_data)
         
         # Should either succeed or return a proper error response
         assert "success" in result

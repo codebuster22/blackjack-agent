@@ -14,6 +14,7 @@ class ServiceManager:
     _instance: Optional['ServiceManager'] = None
     _db_service: Optional[DatabaseService] = None
     _user_manager: Optional[UserManager] = None
+    _initialized: bool = False
     
     def __new__(cls):
         if cls._instance is None:
@@ -22,35 +23,37 @@ class ServiceManager:
     
     def __init__(self):
         if not hasattr(self, '_initialized'):
-            self._initialized = True
+            self._initialized = False
     
-    def initialize(self, database_url: Optional[str] = None):
+    async def initialize(self, database_url: Optional[str] = None):
         """Initialize the services."""
-        if self._db_service is None or database_url is not None:
+        if not self._initialized or database_url is not None:
             config = get_config()
             self._db_service = DatabaseService()
-            self._db_service.init_database(database_url=database_url or config.database.url)
+            await self._db_service.init_database(database_url=database_url or config.database.url)
             self._user_manager = UserManager(self._db_service)
+            self._initialized = True
     
     @property
     def db_service(self) -> DatabaseService:
         """Get the database service."""
-        if self._db_service is None:
-            self.initialize()
+        if not self._initialized:
+            raise RuntimeError("ServiceManager not initialized. Call initialize() first.")
         return self._db_service
     
     @property
     def user_manager(self) -> UserManager:
         """Get the user manager."""
-        if self._user_manager is None:
-            self.initialize()
+        if not self._initialized:
+            raise RuntimeError("ServiceManager not initialized. Call initialize() first.")
         return self._user_manager
     
-    def reset_for_tests(self, database_url: str):
+    async def reset_for_tests(self, database_url: str):
         """Reset the service manager for testing with a specific database URL."""
         self._db_service = None
         self._user_manager = None
-        self.initialize(database_url=database_url)
+        self._initialized = False
+        await self.initialize(database_url=database_url)
 
 # Global service manager instance
 service_manager = ServiceManager() 

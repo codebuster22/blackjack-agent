@@ -9,10 +9,11 @@ class TestDrawCard:
         """Reset game state before each test."""
         reset_game_state()
     
-    def test_draw_card_success(self):
+    @pytest.mark.asyncio
+    async def test_draw_card_success(self):
         """Test successful card drawing."""
         # Initialize game
-        init_result = initialize_game()
+        init_result = await initialize_game()
         assert init_result["success"] is True
         
         # Draw a card
@@ -26,10 +27,11 @@ class TestDrawCard:
         assert len(result["player_hand"]["cards"]) == 1
         assert result["remaining_cards"] == 311  # 312 - 1 card drawn
     
-    def test_draw_card_empty_shoe(self):
+    @pytest.mark.asyncio
+    async def test_draw_card_empty_shoe(self):
         """Test drawing from empty shoe."""
         # Initialize game
-        init_result = initialize_game()
+        init_result = await initialize_game()
         assert init_result["success"] is True
         
         # Draw all cards from shoe (312 cards)
@@ -42,10 +44,11 @@ class TestDrawCard:
         assert result["success"] is False
         assert "Shoe is empty" in result["error"]
     
-    def test_draw_card_multiple_cards(self):
+    @pytest.mark.asyncio
+    async def test_draw_card_multiple_cards(self):
         """Test drawing multiple cards."""
         # Initialize game
-        init_result = initialize_game()
+        init_result = await initialize_game()
         assert init_result["success"] is True
         
         # Draw multiple cards
@@ -55,10 +58,11 @@ class TestDrawCard:
             assert len(result["player_hand"]["cards"]) == i + 1
             assert result["remaining_cards"] == 312 - (i + 1)
     
-    def test_draw_card_hand_evaluation(self):
+    @pytest.mark.asyncio
+    async def test_draw_card_hand_evaluation(self):
         """Test that hand evaluation is updated after drawing."""
         # Initialize game
-        init_result = initialize_game()
+        init_result = await initialize_game()
         assert init_result["success"] is True
         
         # Draw a card

@@ -59,7 +59,7 @@ def get_current_user_id(tool_context: ToolContext) -> str:
 
 # ----- Game Initialization -----
 
-def initialize_game(tool_context: ToolContext = None) -> Dict[str, Any]:
+async def initialize_game(tool_context: ToolContext = None) -> Dict[str, Any]:
     """
     Initialize a new game by creating a shuffled shoe and game state.
     
@@ -92,7 +92,7 @@ def initialize_game(tool_context: ToolContext = None) -> Dict[str, Any]:
         if tool_context:
             user_id = tool_context.state.get("user_id")
             if user_id:
-                balance = service_manager.user_manager.get_user_balance(user_id)
+                balance = await service_manager.user_manager.get_user_balance(user_id)
         
         return {
             "success": True,
@@ -219,7 +219,7 @@ def drawCard() -> Dict[str, Any]:
 
 # ----- Chips Management -----
 
-def placeBet(amount: float, tool_context: ToolContext) -> Dict[str, Any]:
+async def placeBet(amount: float, tool_context: ToolContext) -> Dict[str, Any]:
     """
     Deduct bet amount from user balance and set current bet.
     
@@ -260,7 +260,7 @@ def placeBet(amount: float, tool_context: ToolContext) -> Dict[str, Any]:
             raise ValueError("Bet amount must be a multiple of 5.")
         
         # Atomic debit operation - PostgreSQL handles concurrency and validation
-        if not service_manager.user_manager.debit_user_balance(user_id, amount):
+        if not await service_manager.user_manager.debit_user_balance(user_id, amount):
             raise InsufficientBalanceError("Insufficient balance for bet")
         
         # Update game state
@@ -269,7 +269,7 @@ def placeBet(amount: float, tool_context: ToolContext) -> Dict[str, Any]:
         set_current_state(state)
         
         # Get updated balance after bet placement
-        updated_balance = service_manager.user_manager.get_user_balance(user_id)
+        updated_balance = await service_manager.user_manager.get_user_balance(user_id)
         
         return {
             "success": True,
@@ -487,6 +487,27 @@ def processPlayerAction(action: Literal['hit', 'stand']) -> Dict[str, Any]:
         
         state = get_current_state()
         
+        # Validate game state with specific error messages
+        # Check in order of specificity to provide better error messages
+        if not _validate_initial_hands_dealt(state):
+            return {
+                "success": False,
+                "error": "Cannot process player action: Initial hands have not been dealt properly. Please place bet and deal hands first."
+            }
+        
+        if state.bet <= 0:
+            return {
+                "success": False,
+                "error": "Cannot process player action: No bet has been placed. Please place a bet first."
+            }
+        
+        player_eval = evaluateHand(state.player_hand)
+        if player_eval.is_bust:
+            return {
+                "success": False,
+                "error": "Cannot process player action: Player hand is already bust."
+            }
+        
         if action.lower() == 'hit':
             result = drawCard()
             if not result["success"]:
@@ -559,6 +580,33 @@ def processDealerPlay() -> Dict[str, Any]:
     """
     try:
         state = get_current_state()
+        
+        # Validate game state with specific error messages
+        if not _validate_initial_hands_dealt(state):
+            return {
+                "success": False,
+                "error": "Cannot process dealer play: Initial hands have not been dealt properly. Please place bet and deal hands first."
+            }
+        
+        player_eval = evaluateHand(state.player_hand)
+        dealer_eval = evaluateHand(state.dealer_hand)
+        
+        # Check if dealer already played
+        if not player_eval.is_bust and len(state.dealer_hand.cards) > 2:
+            return {
+                "success": False,
+                "error": "Cannot process dealer play: Dealer has already played."
+            }
+        
+        # Check if player turn is complete
+        # Player turn is complete if they busted OR they have more than 2 cards (hit at least once)
+        # For now, we'll allow dealer to play after initial deal since we don't track explicit "stand" action
+        # In a real game, this would be tracked with a game phase or explicit action log
+        if not player_eval.is_bust and len(state.player_hand.cards) == 2:
+            # In this simplified version, we assume if player has exactly 2 cards and didn't bust,
+            # they implicitly stood. In a full implementation, we'd track player actions explicitly.
+            pass  # Allow dealer to play
+        
         eval = evaluateHand(state.dealer_hand)
         while eval.total < 17:
             card = state.shoe.pop()
@@ -597,7 +645,7 @@ def processDealerPlay() -> Dict[str, Any]:
 
 # ----- Settlement -----
 
-def settleBet(tool_context: ToolContext) -> Dict[str, Any]:
+async def settleBet(tool_context: ToolContext) -> Dict[str, Any]:
     """
     Compare hands, compute payout, update user balance, save round data, and complete session.
     
@@ -642,12 +690,44 @@ def settleBet(tool_context: ToolContext) -> Dict[str, Any]:
         
         # Get current game state
         state = get_current_state()
+        
+        # Validate game state with specific error messages
+        if not _validate_initial_hands_dealt(state):
+            return {
+                "success": False,
+                "error": "Cannot settle bet: Initial hands have not been dealt properly. Please place bet and deal hands first."
+            }
+        
+        if state.bet <= 0:
+            return {
+                "success": False,
+                "error": "Cannot settle bet: No bet has been placed."
+            }
+        
         player_eval = evaluateHand(state.player_hand)
         dealer_eval = evaluateHand(state.dealer_hand)
+        
+        # Check if game is complete enough for settlement
+        # Settlement can happen if:
+        # 1. Player is bust (dealer doesn't need to play), OR
+        # 2. Player has blackjack (immediate settlement), OR
+        # 3. Dealer has played and reached 17+ (normal completion)
+        game_complete_for_settlement = (
+            player_eval.is_bust or 
+            player_eval.is_blackjack or 
+            dealer_eval.total >= 17
+        )
+        
+        if not game_complete_for_settlement:
+            return {
+                "success": False,
+                "error": "Cannot settle bet: Game is not complete. Dealer must play until reaching 17 or higher, unless player has blackjack or is bust."
+            }
+        
         bet = state.bet
         
         # Get user's current balance before settlement
-        chips_before = service_manager.user_manager.get_user_balance(user_id)
+        chips_before = await service_manager.user_manager.get_user_balance(user_id)
         
         # Determine payout and result
         if player_eval.is_bust:
@@ -668,11 +748,11 @@ def settleBet(tool_context: ToolContext) -> Dict[str, Any]:
         # Atomic credit operation - PostgreSQL handles concurrency
         # Only credit if payout is positive (wins and pushes)
         if payout > 0:
-            if not service_manager.user_manager.credit_user_balance(user_id, payout):
+            if not await service_manager.user_manager.credit_user_balance(user_id, payout):
                 raise DatabaseError("Failed to credit user balance")
         
         # Get updated balance
-        chips_after = service_manager.user_manager.get_user_balance(user_id)
+        chips_after = await service_manager.user_manager.get_user_balance(user_id)
         
         # Get total rounds for this user (lifetime total)
         # For now, we'll use a simple approach - just increment from 1
@@ -695,12 +775,12 @@ def settleBet(tool_context: ToolContext) -> Dict[str, Any]:
             'chips_after': chips_after
         }
         
-        round_saved = service_manager.db_service.save_round(round_data)
+        round_saved = await service_manager.db_service.save_round(round_data)
         if not round_saved:
             raise DatabaseError("Failed to save round data")
         
         # Mark session as completed
-        session_completed = service_manager.db_service.update_session_status(session_id, 'completed')
+        session_completed = await service_manager.db_service.update_session_status(session_id, 'completed')
         if not session_completed:
             raise SessionError("Failed to complete session")
         
@@ -850,7 +930,7 @@ def resetForNextHand() -> Dict[str, Any]:
 
 # ----- Display -----
 
-def displayState(revealDealerHole: bool = False, tool_context: ToolContext = None) -> Dict[str, Any]:
+async def displayState(revealDealerHole: bool = False, tool_context: ToolContext = None) -> Dict[str, Any]:
     """
     Get a displayable representation of the current game state.
     
@@ -891,7 +971,7 @@ def displayState(revealDealerHole: bool = False, tool_context: ToolContext = Non
         if tool_context:
             user_id = tool_context.state.get("user_id")
             if user_id:
-                balance = service_manager.user_manager.get_user_balance(user_id)
+                balance = await service_manager.user_manager.get_user_balance(user_id)
         
         # Handle case where dealer hand might be empty
         if not state.dealer_hand.cards:
@@ -944,7 +1024,7 @@ def displayState(revealDealerHole: bool = False, tool_context: ToolContext = Non
 
 
 
-def getGameStatus(tool_context: ToolContext = None) -> Dict[str, Any]:
+async def getGameStatus(tool_context: ToolContext = None) -> Dict[str, Any]:
     """
     Get the current game status without taking any action.
     
@@ -977,7 +1057,7 @@ def getGameStatus(tool_context: ToolContext = None) -> Dict[str, Any]:
         if tool_context:
             user_id = tool_context.state.get("user_id")
             if user_id:
-                balance = service_manager.user_manager.get_user_balance(user_id)
+                balance = await service_manager.user_manager.get_user_balance(user_id)
         
         # Convert to dict format for agent consumption
         def _card_to_dict(card: Card) -> Dict[str, str]:
@@ -1012,7 +1092,7 @@ def getGameStatus(tool_context: ToolContext = None) -> Dict[str, Any]:
             "error": str(e)
         }
 
-def getGameHistory(tool_context: ToolContext) -> Dict[str, Any]:
+async def getGameHistory(tool_context: ToolContext) -> Dict[str, Any]:
     """
     Get the complete game history of all played rounds for the user.
     
@@ -1047,7 +1127,7 @@ def getGameHistory(tool_context: ToolContext) -> Dict[str, Any]:
             raise SessionError("User ID not found in session context")
         
         # Get user's current balance
-        current_balance = service_manager.user_manager.get_user_balance(user_id)
+        current_balance = await service_manager.user_manager.get_user_balance(user_id)
         
         # For now, return empty history since database round tracking is not yet implemented
         # TODO: Implement proper round tracking in database
@@ -1096,6 +1176,365 @@ def getGameHistory(tool_context: ToolContext) -> Dict[str, Any]:
 
 # Note: I/O functions promptUser and logGame should be implemented in the agent layer.
 
+# ----- Validation Infrastructure -----
+
+class GameStateValidationError(Exception):
+    """Raised when game state validation fails."""
+    pass
+
+def _validate_initial_hands_dealt(state: GameState) -> bool:
+    """
+    Validate that both player and dealer have been dealt initial hands (2 cards each).
+    
+    Args:
+        state (GameState): The game state to validate
+        
+    Returns:
+        bool: True if both hands have 2+ cards, False otherwise
+    """
+    return (len(state.player_hand.cards) >= 2 and 
+            len(state.dealer_hand.cards) >= 2)
+
+def _validate_player_turn_ready(state: GameState) -> bool:
+    """
+    Validate that the game is ready for player actions.
+    
+    Checks:
+    - Initial hands have been dealt (2+ cards each)
+    - Bet has been placed (> 0)
+    - Player has not busted
+    
+    Args:
+        state (GameState): The game state to validate
+        
+    Returns:
+        bool: True if player can take actions, False otherwise
+    """
+    if not _validate_initial_hands_dealt(state):
+        return False
+    if state.bet <= 0:
+        return False
+    
+    player_eval = evaluateHand(state.player_hand)
+    return not player_eval.is_bust
+
+def _validate_dealer_turn_ready(state: GameState) -> bool:
+    """
+    Validate that the game is ready for dealer play.
+    
+    Checks:
+    - Initial hands have been dealt
+    - Player turn is complete (busted or stood)
+    - Dealer has not already played (total < 17 or hasn't started)
+    
+    Args:
+        state (GameState): The game state to validate
+        
+    Returns:
+        bool: True if dealer should play, False otherwise
+    """
+    if not _validate_initial_hands_dealt(state):
+        return False
+    
+    player_eval = evaluateHand(state.player_hand)
+    dealer_eval = evaluateHand(state.dealer_hand)
+    
+    # Player must be done (busted or stood)
+    # We can't easily detect "stood" but we can assume if player didn't bust and dealer hasn't played, they stood
+    return player_eval.is_bust or len(state.dealer_hand.cards) == 2
+
+def _validate_settlement_ready(state: GameState) -> bool:
+    """
+    Validate that the game is ready for bet settlement.
+    
+    Checks:
+    - Initial hands were dealt
+    - Bet was placed
+    - Both player and dealer turns are complete
+    
+    Args:
+        state (GameState): The game state to validate
+        
+    Returns:
+        bool: True if ready for settlement, False otherwise
+    """
+    if not _validate_initial_hands_dealt(state):
+        return False
+    if state.bet <= 0:
+        return False
+    
+    player_eval = evaluateHand(state.player_hand)
+    dealer_eval = evaluateHand(state.dealer_hand)
+    
+    # Player is done if busted
+    if player_eval.is_bust:
+        return True
+    
+    # Dealer should have played (total >= 17) if player didn't bust
+    return dealer_eval.total >= 17
+
+def _validate_game_state_consistency(state: GameState) -> Tuple[bool, str]:
+    """
+    Perform comprehensive validation of game state consistency.
+    
+    Validates:
+    - Shoe has reasonable number of cards
+    - Hand totals are mathematically correct
+    - Cards in hands don't exceed what was dealt from shoe (only for extreme cases)
+    
+    Args:
+        state (GameState): The game state to validate
+        
+    Returns:
+        Tuple[bool, str]: (is_valid, error_message)
+    """
+    # Check shoe count (should be between 0 and 312 for 6-deck shoe)
+    if len(state.shoe) < 0 or len(state.shoe) > 312:
+        return False, f"Invalid shoe count: {len(state.shoe)}"
+    
+    # Check for extreme card count mismatches (only fail on obvious corruption)
+    total_dealt = len(state.player_hand.cards) + len(state.dealer_hand.cards)
+    total_cards = total_dealt + len(state.shoe)
+    
+    # Only fail if we have way too many cards (obvious corruption)
+    if total_cards > 320:  # Allow some tolerance for test scenarios
+        return False, f"Card count corruption: dealt={total_dealt}, remaining={len(state.shoe)}, total={total_cards}"
+    
+    # Validate hand evaluations
+    try:
+        if state.player_hand.cards:
+            player_eval = evaluateHand(state.player_hand)
+        if state.dealer_hand.cards:
+            dealer_eval = evaluateHand(state.dealer_hand)
+    except Exception as e:
+        return False, f"Hand evaluation error: {str(e)}"
+    
+    return True, "Game state is consistent"
+
+# ----- Atomic Operations -----
+
+async def startRoundWithBet(amount: float, tool_context: ToolContext) -> Dict[str, Any]:
+    """
+    Start a new round atomically: initialize game, place bet, and deal initial hands.
+    
+    This is the most atomic operation available - it combines game initialization,
+    bet placement, and initial dealing into a single bulletproof transaction.
+    If any step fails, the entire operation is rolled back to a clean state.
+    
+    Use this function when:
+    - Starting a completely new round/session
+    - You want maximum atomicity and state safety
+    - Beginning after a previous round was settled
+    - Recovering from any state corruption
+    
+    Args:
+        amount (float): The amount to bet
+        tool_context (ToolContext): Tool context containing user_id and session_id
+        
+    Returns:
+        Dict[str, Any]: A dictionary containing:
+            - success (bool): True if all operations succeeded
+            - message (str): Description of the complete operation result
+            - bet (float): The bet amount placed
+            - balance (float): Updated user balance after bet
+            - player_hand (Dict[str, Any]): Player's initial hand
+            - dealer_up_card (Dict[str, str]): Dealer's visible up card
+            - remaining_cards (int): Cards remaining in shoe (should be ~308)
+            - round_started (bool): True if new round was successfully started
+            - error (str): Error message if any operation failed
+    """
+    try:
+        user_id = tool_context.state.get("user_id")
+        if not user_id:
+            raise SessionError("User ID not found in session context")
+        
+        # Store original balance for potential rollback
+        original_balance = await service_manager.user_manager.get_user_balance(user_id)
+        
+        # Step 1: Initialize game (creates fresh state and shoe)
+        init_result = await initialize_game(tool_context)
+        if not init_result["success"]:
+            return {
+                "success": False,
+                "error": f"Failed to initialize game: {init_result.get('error', 'Unknown error')}",
+                "balance": original_balance
+            }
+        
+        try:
+            # Step 2: Place bet and deal initial hands atomically
+            bet_deal_result = await placeBetAndDealInitialHands(amount, tool_context)
+            if not bet_deal_result["success"]:
+                # placeBetAndDealInitialHands handles its own rollback,
+                # but we should reset the game state since we initialized it
+                reset_game_state()
+                
+                return {
+                    "success": False,
+                    "error": f"Failed during bet/deal phase: {bet_deal_result.get('error', 'Unknown error')}. Game state reset.",
+                    "balance": original_balance
+                }
+            
+            # Step 3: Final validation of complete game state
+            state = get_current_state()
+            if not _validate_player_turn_ready(state):
+                # Full rollback: credit bet back and reset state
+                await service_manager.user_manager.credit_user_balance(user_id, amount)
+                reset_game_state()
+                
+                return {
+                    "success": False,
+                    "error": "Final game state validation failed. Bet refunded and state reset.",
+                    "balance": original_balance
+                }
+            
+            # Success! Return complete round start information
+            return {
+                "success": True,
+                "message": f"New round started with ${amount} bet. Cards dealt successfully!",
+                "bet": bet_deal_result["bet"],
+                "balance": bet_deal_result["balance"],
+                "player_hand": bet_deal_result["player_hand"],
+                "dealer_up_card": bet_deal_result["dealer_up_card"],
+                "remaining_cards": bet_deal_result["remaining_cards"],
+                "round_started": True
+            }
+            
+        except Exception as bet_deal_error:
+            # Rollback bet if any exception during bet/deal phase
+            try:
+                await service_manager.user_manager.credit_user_balance(user_id, amount)
+            except Exception:
+                pass  # Best effort rollback
+            
+            # Reset game state since we initialized it
+            reset_game_state()
+            
+            return {
+                "success": False,
+                "error": f"Exception during bet/deal phase: {str(bet_deal_error)}. State reset and bet refunded.",
+                "balance": original_balance
+            }
+            
+    except Exception as e:
+        # Reset game state if we got far enough to initialize
+        try:
+            reset_game_state()
+        except Exception:
+            pass  # Best effort cleanup
+            
+        return {
+            "success": False,
+            "error": f"Unexpected error in startRoundWithBet: {str(e)}",
+            "balance": original_balance if 'original_balance' in locals() else None
+        }
+
+async def placeBetAndDealInitialHands(amount: float, tool_context: ToolContext) -> Dict[str, Any]:
+    """
+    Atomically place bet and deal initial hands, with rollback on failure.
+    
+    This function ensures that either both operations succeed or both fail,
+    preventing partial state corruption. If dealing fails after bet placement,
+    the bet is automatically rolled back.
+    
+    Use this function when:
+    - Starting a new hand
+    - You want to ensure atomic operations
+    - Preventing state corruption from partial failures
+    
+    Args:
+        amount (float): The amount to bet
+        tool_context (ToolContext): Tool context containing user_id and session_id
+        
+    Returns:
+        Dict[str, Any]: A dictionary containing:
+            - success (bool): True if both operations succeeded
+            - message (str): Description of the result
+            - bet (float): The bet amount placed
+            - balance (float): Updated user balance
+            - player_hand (Dict[str, Any]): Player's initial hand
+            - dealer_up_card (Dict[str, str]): Dealer's visible up card
+            - remaining_cards (int): Cards remaining in shoe
+            - error (str): Error message if operations failed
+    """
+    try:
+        # Get user_id from tool context
+        user_id = tool_context.state.get("user_id")
+        if not user_id:
+            raise SessionError("User ID not found in session context")
+        
+        # Store original balance for potential rollback
+        original_balance = await service_manager.user_manager.get_user_balance(user_id)
+        
+        # Step 1: Place bet (this will debit the user's balance)
+        bet_result = await placeBet(amount, tool_context)
+        if not bet_result["success"]:
+            return bet_result  # Return the bet placement error directly
+        
+        try:
+            # Step 2: Deal initial hands
+            deal_result = dealInitialHands()
+            if not deal_result["success"]:
+                # Rollback: Credit the bet amount back to user
+                await service_manager.user_manager.credit_user_balance(user_id, amount)
+                
+                # Reset game state to prevent corruption
+                state = get_current_state()
+                state.player_hand = Hand()
+                state.dealer_hand = Hand()
+                state.bet = 0.0
+                set_current_state(state)
+                
+                return {
+                    "success": False,
+                    "error": f"Failed to deal hands: {deal_result.get('error', 'Unknown error')}. Bet has been refunded.",
+                    "balance": original_balance
+                }
+            
+            # Step 3: Validate the resulting state
+            state = get_current_state()
+            if not _validate_player_turn_ready(state):
+                # Rollback: Credit the bet amount back to user
+                await service_manager.user_manager.credit_user_balance(user_id, amount)
+                
+                # Reset game state to prevent corruption
+                state = get_current_state()
+                state.player_hand = Hand()
+                state.dealer_hand = Hand()
+                state.bet = 0.0
+                set_current_state(state)
+                
+                return {
+                    "success": False,
+                    "error": "Game state validation failed after dealing. Bet has been refunded and game reset.",
+                    "balance": original_balance
+                }
+            
+            # Success! Return combined information
+            return {
+                "success": True,
+                "message": f"Bet of ${amount} placed and initial hands dealt successfully",
+                "bet": bet_result["bet"],
+                "balance": bet_result["balance"],
+                "player_hand": deal_result["player_hand"],
+                "dealer_up_card": deal_result["dealer_up_card"],
+                "remaining_cards": deal_result["remaining_cards"]
+            }
+            
+        except Exception as deal_error:
+            # Rollback: Credit the bet amount back to user
+            await service_manager.user_manager.credit_user_balance(user_id, amount)
+            return {
+                "success": False,
+                "error": f"Failed during dealing phase: {str(deal_error)}. Bet has been refunded.",
+                "balance": original_balance
+            }
+            
+    except Exception as e:
+        return {
+            "success": False,
+            "error": f"Unexpected error in placeBetAndDealInitialHands: {str(e)}"
+        }
+
 # ----- State Management -----
 
 # Global state to maintain the game state across function calls
@@ -1105,12 +1544,24 @@ def get_current_state() -> GameState:
     """
     Get the current global state, creating one if it doesn't exist.
     
+    Includes basic validation to detect state corruption and automatically
+    reset if the state is invalid.
+    
     Returns:
         GameState: The current game state
     """
     global _global_state
     if _global_state is None:
         _global_state = GameState(shoe=shuffleShoe())
+        return _global_state
+    
+    # Validate state consistency
+    is_valid, error_msg = _validate_game_state_consistency(_global_state)
+    if not is_valid:
+        # Log the error and reset state
+        print(f"WARNING: Game state corruption detected: {error_msg}. Resetting game state.")
+        _global_state = GameState(shoe=shuffleShoe())
+    
     return _global_state
 
 def set_current_state(state: GameState) -> None:

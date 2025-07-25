@@ -9,10 +9,11 @@ from dealer_agent.tools.dealer import (
 @pytest.mark.docker
 @pytest.mark.database
 @pytest.mark.integration
+@pytest.mark.asyncio
 class TestFullRoundDealerPlays:
     """Integration test for full round where dealer plays."""
     
-    def test_full_round_dealer_plays(self, clean_database, mock_tool_context_with_data):
+    async def test_full_round_dealer_plays(self, clean_database, mock_tool_context_with_data):
         """
         Test complete round where player stands and dealer plays.
         Expected result: Correct result based on final totals.
@@ -24,7 +25,7 @@ class TestFullRoundDealerPlays:
         set_current_state(state)
         
         # Place bet
-        placeBet(30.0, mock_tool_context_with_data)
+        await placeBet(30.0, mock_tool_context_with_data)
         current_state = get_current_state()
         assert current_state.bet == 30.0
         
@@ -45,6 +46,10 @@ class TestFullRoundDealerPlays:
         # Player stands (no action needed, just verify they don't bust)
         if player_eval.is_bust:
             pytest.skip("Player busted on initial deal, dealer play test not applicable")
+        
+        # Player explicitly stands
+        processPlayerAction('stand')
+        current_state = get_current_state()
         
         # Store initial dealer hand size
         initial_dealer_cards = len(current_state.dealer_hand.cards)
@@ -68,7 +73,7 @@ class TestFullRoundDealerPlays:
         final_dealer_eval = evaluateHand(current_state.dealer_hand)
         
         # Settle the bet
-        settle_result = settleBet(mock_tool_context_with_data)
+        settle_result = await settleBet(mock_tool_context_with_data)
         
         # Verify payout and result are consistent
         if settle_result["result"] == 'win':
@@ -82,7 +87,7 @@ class TestFullRoundDealerPlays:
         current_state = get_current_state()
         
         # Display final state
-        display_result = displayState(revealDealerHole=True, tool_context=mock_tool_context_with_data)
+        display_result = await displayState(revealDealerHole=True, tool_context=mock_tool_context_with_data)
         assert "Player Hand:" in display_result["display_text"]
         assert "Dealer Hand:" in display_result["display_text"]
         assert "Balance:" in display_result["display_text"]

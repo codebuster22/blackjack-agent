@@ -8,10 +8,10 @@ import json
 import logging
 from typing import Optional, List, Dict, Any
 from datetime import datetime
-from contextlib import contextmanager
-import psycopg2
-from psycopg2.extras import RealDictCursor
-from psycopg2.pool import SimpleConnectionPool
+from contextlib import asynccontextmanager
+import psycopg
+from psycopg.rows import dict_row
+from psycopg_pool import AsyncConnectionPool
 
 from .models import (
     USERS_TABLE_SQL, BLACKJACK_SESSIONS_TABLE_SQL, ROUNDS_TABLE_SQL, 
@@ -34,7 +34,7 @@ class DatabaseService:
         self.pool = None
         self._initialized = False
     
-    def init_database(self, database_url: Optional[str] = None, pool_size: Optional[int] = None) -> bool:
+    async def init_database(self, database_url: Optional[str] = None, pool_size: Optional[int] = None) -> bool:
         """
         Initialize database connection and create tables.
         
@@ -53,30 +53,30 @@ class DatabaseService:
             db_url = database_url or config.database.url
             pool_size_val = pool_size or config.database.pool_size
             
-            # Create connection pool
-            self.pool = SimpleConnectionPool(
-                minconn=1,
-                maxconn=pool_size_val,
-                dsn=db_url
+            # Create async connection pool
+            self.pool = AsyncConnectionPool(
+                conninfo=db_url,
+                min_size=1,
+                max_size=pool_size_val
             )
             
             # Test connection and create tables
-            with self.pool.getconn() as conn:
-                with conn.cursor() as cursor:
+            async with self.pool.connection() as conn:
+                async with conn.cursor() as cursor:
                     # Create tables
-                    cursor.execute(USERS_TABLE_SQL)
-                    cursor.execute(BLACKJACK_SESSIONS_TABLE_SQL)
-                    cursor.execute(ROUNDS_TABLE_SQL)
+                    await cursor.execute(USERS_TABLE_SQL)
+                    await cursor.execute(BLACKJACK_SESSIONS_TABLE_SQL)
+                    await cursor.execute(ROUNDS_TABLE_SQL)
                     
                     # Create PostgreSQL functions
-                    cursor.execute(DEBIT_USER_BALANCE_FUNCTION)
-                    cursor.execute(CREDIT_USER_BALANCE_FUNCTION)
+                    await cursor.execute(DEBIT_USER_BALANCE_FUNCTION)
+                    await cursor.execute(CREDIT_USER_BALANCE_FUNCTION)
                     
                     # Create indexes
                     for index_sql in INDEXES_SQL:
-                        cursor.execute(index_sql)
+                        await cursor.execute(index_sql)
                     
-                    conn.commit()
+                    await conn.commit()
             
             self._initialized = True
             logger.info("Database initialized successfully")
@@ -87,29 +87,16 @@ class DatabaseService:
             self._initialized = False
             return False
     
-    def _get_connection(self):
-        """Get a connection from the pool."""
+    @asynccontextmanager
+    async def get_connection(self):
+        """Get a connection from the pool as an async context manager."""
         if not self._initialized or not self.pool:
             raise RuntimeError("Database not initialized")
-        return self.pool.getconn()
-    
-    def _return_connection(self, conn):
-        """Return a connection to the pool."""
-        if self.pool:
-            self.pool.putconn(conn)
-    
-    @contextmanager
-    def get_connection(self):
-        """Get a connection from the pool with automatic cleanup."""
-        conn = None
-        try:
-            conn = self._get_connection()
+        
+        async with self.pool.connection() as conn:
             yield conn
-        finally:
-            if conn:
-                self._return_connection(conn)
     
-    def create_session(self, session_id: str, user_id: str) -> bool:
+    async def create_session(self, session_id: str, user_id: str) -> bool:
         """
         Create a new session in the database.
         
@@ -121,13 +108,13 @@ class DatabaseService:
             bool: True if successful, False otherwise
         """
         try:
-            with self.get_connection() as conn:
-                with conn.cursor() as cursor:
-                    cursor.execute(
+            async with self.get_connection() as conn:
+                async with conn.cursor() as cursor:
+                    await cursor.execute(
                         "INSERT INTO blackjack_sessions (session_id, user_id, created_at, status) VALUES (%s, %s, %s, %s)",
                         (session_id, user_id, datetime.now(), 'active')
                     )
-                    conn.commit()
+                    await conn.commit()
                     logger.info(f"Session {session_id} created successfully for user {user_id}")
                     return True
                     
@@ -135,7 +122,7 @@ class DatabaseService:
             logger.error(f"Failed to create session {session_id}: {e}")
             return False
     
-    def save_round(self, round_data: Dict[str, Any]) -> bool:
+    async def save_round(self, round_data: Dict[str, Any]) -> bool:
         """
         Save a round to the database.
         
@@ -146,9 +133,9 @@ class DatabaseService:
             bool: True if successful, False otherwise
         """
         try:
-            with self.get_connection() as conn:
-                with conn.cursor() as cursor:
-                    cursor.execute("""
+            async with self.get_connection() as conn:
+                async with conn.cursor() as cursor:
+                    await cursor.execute("""
                         INSERT INTO rounds (
                             round_id, session_id, bet_amount,
                             player_hand, dealer_hand, player_total, dealer_total,
@@ -168,7 +155,7 @@ class DatabaseService:
                         round_data['chips_after'],
                         datetime.now()
                     ))
-                    conn.commit()
+                    await conn.commit()
                     logger.info(f"Round {round_data['round_id']} saved successfully")
                     return True
                     
@@ -176,7 +163,7 @@ class DatabaseService:
             logger.error(f"Failed to save round {round_data.get('round_id', 'unknown')}: {e}")
             return False
     
-    def get_session_rounds(self, session_id: str) -> List[Dict[str, Any]]:
+    async def get_session_rounds(self, session_id: str) -> List[Dict[str, Any]]:
         """
         Get all rounds for a session.
         
@@ -187,25 +174,22 @@ class DatabaseService:
             List[Dict]: List of round data dictionaries
         """
         try:
-            with self.get_connection() as conn:
-                with conn.cursor(cursor_factory=RealDictCursor) as cursor:
-                    cursor.execute("""
+            async with self.get_connection() as conn:
+                async with conn.cursor(row_factory=dict_row) as cursor:
+                    await cursor.execute("""
                         SELECT * FROM rounds 
                         WHERE session_id = %s 
                         ORDER BY created_at
                     """, (session_id,))
                     
-                    rounds = []
-                    for row in cursor.fetchall():
-                        rounds.append(dict(row))
-                    
-                    return rounds
+                    rows = await cursor.fetchall()
+                    return [dict(row) for row in rows]
                     
         except Exception as e:
             logger.error(f"Failed to get rounds for session {session_id}: {e}")
             return []
     
-    def get_user_sessions(self, user_id: str) -> List[Dict[str, Any]]:
+    async def get_user_sessions(self, user_id: str) -> List[Dict[str, Any]]:
         """
         Get all sessions for a user.
         
@@ -216,25 +200,22 @@ class DatabaseService:
             List[Dict]: List of session data dictionaries
         """
         try:
-            with self.get_connection() as conn:
-                with conn.cursor(cursor_factory=RealDictCursor) as cursor:
-                    cursor.execute("""
+            async with self.get_connection() as conn:
+                async with conn.cursor(row_factory=dict_row) as cursor:
+                    await cursor.execute("""
                         SELECT * FROM blackjack_sessions 
                         WHERE user_id = %s 
                         ORDER BY created_at DESC
                     """, (user_id,))
                     
-                    sessions = []
-                    for row in cursor.fetchall():
-                        sessions.append(dict(row))
-                    
-                    return sessions
+                    rows = await cursor.fetchall()
+                    return [dict(row) for row in rows]
                     
         except Exception as e:
             logger.error(f"Failed to get sessions for user {user_id}: {e}")
             return []
     
-    def get_session_stats(self, session_id: str) -> Dict[str, Any]:
+    async def get_session_stats(self, session_id: str) -> Dict[str, Any]:
         """
         Get statistics for a session.
         
@@ -245,9 +226,9 @@ class DatabaseService:
             Dict: Session statistics
         """
         try:
-            with self.get_connection() as conn:
-                with conn.cursor() as cursor:
-                    cursor.execute("""
+            async with self.get_connection() as conn:
+                async with conn.cursor() as cursor:
+                    await cursor.execute("""
                         SELECT 
                             COUNT(*) as total_rounds,
                             SUM(CASE WHEN outcome = 'win' THEN 1 ELSE 0 END) as wins,
@@ -259,7 +240,7 @@ class DatabaseService:
                         WHERE session_id = %s
                     """, (session_id,))
                     
-                    row = cursor.fetchone()
+                    row = await cursor.fetchone()
                     if row:
                         return {
                             'total_rounds': row[0] or 0,
@@ -276,7 +257,7 @@ class DatabaseService:
             logger.error(f"Failed to get stats for session {session_id}: {e}")
             return {}
     
-    def update_session_status(self, session_id: str, status: str) -> bool:
+    async def update_session_status(self, session_id: str, status: str) -> bool:
         """
         Update session status.
         
@@ -288,13 +269,13 @@ class DatabaseService:
             bool: True if successful, False otherwise
         """
         try:
-            with self.get_connection() as conn:
-                with conn.cursor() as cursor:
-                    cursor.execute(
+            async with self.get_connection() as conn:
+                async with conn.cursor() as cursor:
+                    await cursor.execute(
                         "UPDATE blackjack_sessions SET status = %s WHERE session_id = %s",
                         (status, session_id)
                     )
-                    conn.commit()
+                    await conn.commit()
                     logger.info(f"Session {session_id} status updated to {status}")
                     return True
                     
@@ -302,10 +283,10 @@ class DatabaseService:
             logger.error(f"Failed to update session {session_id} status: {e}")
             return False
     
-    def close(self):
+    async def close(self):
         """Close database connections."""
         if self.pool:
-            self.pool.closeall()
+            await self.pool.close()
             self._initialized = False
             logger.info("Database connections closed")
 

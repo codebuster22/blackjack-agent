@@ -6,22 +6,21 @@ import time
 import subprocess
 import uuid
 from typing import Optional, Dict, Any
-from contextlib import contextmanager
+from contextlib import asynccontextmanager
 from datetime import datetime
-import psycopg2
-from psycopg2.extensions import connection
+import psycopg
 import pytest
 
 # Test database configuration
 TEST_DB_CONFIG = {
     "host": "localhost",
     "port": 5436,
-    "database": "blackjack_test",
+    "dbname": "blackjack_test",
     "user": "test_user",
     "password": "test_password"
 }
 
-TEST_DATABASE_URL = f"postgresql://{TEST_DB_CONFIG['user']}:{TEST_DB_CONFIG['password']}@{TEST_DB_CONFIG['host']}:{TEST_DB_CONFIG['port']}/{TEST_DB_CONFIG['database']}"
+TEST_DATABASE_URL = f"postgresql://{TEST_DB_CONFIG['user']}:{TEST_DB_CONFIG['password']}@{TEST_DB_CONFIG['host']}:{TEST_DB_CONFIG['port']}/{TEST_DB_CONFIG['dbname']}"
 
 
 class DockerComposeError(Exception):
@@ -93,7 +92,13 @@ def stop_test_database() -> None:
 
 def wait_for_database(timeout: int = 60, interval: float = 2.0) -> None:
     """
-    Wait for the database to be ready by polling the health check.
+    Wait for the database to be ready by verifying actual database connectivity.
+    
+    This function ensures:
+    - PostgreSQL server is accepting connections
+    - The test database exists and is accessible
+    - The test user can connect and perform operations
+    - Basic schema operations work
     
     Args:
         timeout: Maximum time to wait in seconds
@@ -106,19 +111,38 @@ def wait_for_database(timeout: int = 60, interval: float = 2.0) -> None:
     
     while time.time() - start_time < timeout:
         try:
-            # Check if container is healthy
-            result = run_docker_compose_command("ps")
-            if "healthy" in result.stdout:
-                return
+            # Test actual database connectivity using the DATABASE_URL
+            database_url = get_test_database_url()
             
-            # Alternative: try to connect directly
-            with get_test_database_connection() as conn:
-                with conn.cursor() as cursor:
-                    cursor.execute("SELECT 1")
-                    return
+            # Try connecting using psycopg3 async connection
+            async def test_database_ready():
+                try:
+                    conn = await psycopg.AsyncConnection.connect(database_url)
+                    async with conn.cursor() as cursor:
+                        # Test basic operations
+                        await cursor.execute("SELECT 1")
+                        result = await cursor.fetchone()
+                        assert result[0] == 1
+                        
+                        # Test that we can create and drop a table (verify permissions)
+                        await cursor.execute("CREATE TABLE IF NOT EXISTS _test_connectivity (id INTEGER)")
+                        await cursor.execute("DROP TABLE IF EXISTS _test_connectivity")
+                        await conn.commit()
                     
-        except (DockerComposeError, DatabaseError):
-            pass
+                    await conn.close()
+                    return True
+                except Exception:
+                    return False
+            
+            # Run the async test
+            import asyncio
+            if asyncio.run(test_database_ready()):
+                print("✅ Database is ready and accessible")
+                return
+                    
+        except Exception as e:
+            # Log the specific error for debugging
+            print(f"Database not ready yet: {e}")
         
         time.sleep(interval)
     
@@ -135,29 +159,31 @@ def get_test_database_url() -> str:
     return TEST_DATABASE_URL
 
 
-@contextmanager
-def get_test_database_connection() -> connection:
+@asynccontextmanager
+async def get_test_database_connection():
     """
-    Get a connection to the test database.
+    Get a connection to the test database using DATABASE_URL.
     
     Yields:
-        psycopg2.connection: Database connection
+        psycopg.AsyncConnection: Database connection
         
     Raises:
         DatabaseError: If connection fails
     """
     conn = None
     try:
-        conn = psycopg2.connect(**TEST_DB_CONFIG)
+        # Use DATABASE_URL directly for consistency
+        database_url = get_test_database_url()
+        conn = await psycopg.AsyncConnection.connect(database_url)
         yield conn
     except Exception as e:
         raise DatabaseError(f"Failed to connect to test database: {e}")
     finally:
         if conn:
-            conn.close()
+            await conn.close()
 
 
-def reset_database() -> None:
+async def reset_database() -> None:
     """
     Reset the database by dropping all tables and recreating them.
     
@@ -165,10 +191,10 @@ def reset_database() -> None:
         DatabaseError: If reset fails
     """
     try:
-        with get_test_database_connection() as conn:
-            with conn.cursor() as cursor:
+        async with get_test_database_connection() as conn:
+            async with conn.cursor() as cursor:
                 # Drop all tables in public schema
-                cursor.execute("""
+                await cursor.execute("""
                     DO $$ 
                     DECLARE 
                         r RECORD;
@@ -180,7 +206,7 @@ def reset_database() -> None:
                 """)
                 
                 # Drop all sequences
-                cursor.execute("""
+                await cursor.execute("""
                     DO $$ 
                     DECLARE 
                         r RECORD;
@@ -191,12 +217,12 @@ def reset_database() -> None:
                     END $$;
                 """)
                 
-                conn.commit()
+                await conn.commit()
     except Exception as e:
         raise DatabaseError(f"Failed to reset database: {e}")
 
 
-def create_test_user(username: Optional[str] = None, initial_balance: float = 100.0) -> Dict[str, Any]:
+async def create_test_user(username: Optional[str] = None, initial_balance: float = 100.0) -> Dict[str, Any]:
     """
     Create a test user with the given username and initial balance.
     
@@ -217,11 +243,11 @@ def create_test_user(username: Optional[str] = None, initial_balance: float = 10
         from services.service_manager import service_manager
         
         # Create user using the service manager (which should be configured for tests)
-        username = service_manager.user_manager.create_user_if_not_exists(username)
+        username = await service_manager.user_manager.create_user_if_not_exists(username)
         
         # Set initial balance if different from default
         if initial_balance != 100.0:  # Default from config
-            service_manager.user_manager.credit_user_balance(username, initial_balance - 100.0)
+            await service_manager.user_manager.credit_user_balance(username, initial_balance - 100.0)
         
         return {
             "user_id": username,  # For backward compatibility, return username as user_id
@@ -232,30 +258,29 @@ def create_test_user(username: Optional[str] = None, initial_balance: float = 10
         raise DatabaseError(f"Failed to create test user: {e}")
 
 
-def create_test_session(username: str) -> Dict[str, Any]:
+async def create_test_session(username: str) -> Dict[str, Any]:
     """
-    Create a test session for the given user.
-    
+    Create a test session for the given username.
+
     Args:
-        username: The username to create a session for
-        
+        username: Username for the test user
+
     Returns:
-        Dict[str, Any]: Session data including session_id and username
-        
+        Dict[str, Any]: Session data including session_id
+
     Raises:
         DatabaseError: If session creation fails
     """
     try:
         from services.service_manager import service_manager
-        
-        # Create session using the service manager (which should be configured for tests)
-        session_id = service_manager.user_manager.create_session(username)
-        
+
+        # Create session using the service manager
+        session_id = await service_manager.user_manager.create_session(username)
+
         return {
             "session_id": session_id,
             "user_id": username,  # For backward compatibility
-            "username": username,
-            "created_at": datetime.now().isoformat()
+            "status": "active"
         }
     except Exception as e:
         raise DatabaseError(f"Failed to create test session: {e}")
@@ -337,15 +362,15 @@ class TestDataManager:  # noqa: N801
         self.created_users = []
         self.created_sessions = []
     
-    def create_user(self, username: Optional[str] = None, balance: float = 100.0) -> Dict[str, Any]:
+    async def create_user(self, username: Optional[str] = None, balance: float = 100.0) -> Dict[str, Any]:
         """Create a test user and track it for cleanup."""
-        user_data = create_test_user(username, balance)
+        user_data = await create_test_user(username, balance)
         self.created_users.append(user_data)
         return user_data
     
-    def create_session(self, user_id: str) -> Dict[str, Any]:
+    async def create_session(self, user_id: str) -> Dict[str, Any]:
         """Create a test session and track it for cleanup."""
-        session_data = create_test_session(user_id)
+        session_data = await create_test_session(user_id)
         self.created_sessions.append(session_data)
         return session_data
     

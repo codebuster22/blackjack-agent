@@ -16,14 +16,19 @@ class TestProcessPlayerAction:
         Mock values: State with player hand total < 21.
         Why: Verify hit action correctly draws a card for the player.
         """
-        # Initialize game state
+        # Initialize game state with proper dealer hand and bet
         from dealer_agent.tools.dealer import set_current_state
         state = GameState(
             shoe=shuffleShoe(),
             player_hand=Hand(cards=[
                 Card(suit=Suit.hearts, rank=Rank.ten),
                 Card(suit=Suit.diamonds, rank=Rank.five)
-            ])
+            ]),
+            dealer_hand=Hand(cards=[
+                Card(suit=Suit.spades, rank=Rank.ace),
+                Card(suit=Suit.clubs, rank=Rank.king)
+            ]),
+            bet=100.0  # Add bet to satisfy validation
         )
         set_current_state(state)
         
@@ -40,14 +45,19 @@ class TestProcessPlayerAction:
         Mock values: State with existing player hand.
         Why: Verify stand action correctly ends player's turn without drawing.
         """
-        # Initialize game state
+        # Initialize game state with proper dealer hand and bet
         from dealer_agent.tools.dealer import set_current_state
         state = GameState(
             shoe=shuffleShoe(),
             player_hand=Hand(cards=[
                 Card(suit=Suit.hearts, rank=Rank.ten),
                 Card(suit=Suit.diamonds, rank=Rank.five)
-            ])
+            ]),
+            dealer_hand=Hand(cards=[
+                Card(suit=Suit.spades, rank=Rank.ace),
+                Card(suit=Suit.clubs, rank=Rank.king)
+            ]),
+            bet=100.0  # Add bet to satisfy validation
         )
         set_current_state(state)
         
@@ -55,7 +65,7 @@ class TestProcessPlayerAction:
         
         assert result["success"] is True
         assert len(result["player_hand"]["cards"]) == 2  # No change
-        assert result["remaining_cards"] == 312  # No change to shoe
+        assert result["remaining_cards"] == 312  # Shoe unchanged for stand action
     
     def test_hit_on_21(self):
         """
@@ -64,14 +74,19 @@ class TestProcessPlayerAction:
         Mock values: State with player hand total = 21.
         Why: Verify the function doesn't prevent drawing when total is 21 (logic handled by caller).
         """
-        # Initialize game state
+        # Initialize game state with proper dealer hand and bet
         from dealer_agent.tools.dealer import set_current_state
         state = GameState(
             shoe=shuffleShoe(),
             player_hand=Hand(cards=[
                 Card(suit=Suit.hearts, rank=Rank.ten),
                 Card(suit=Suit.diamonds, rank=Rank.ace)
-            ])
+            ]),
+            dealer_hand=Hand(cards=[
+                Card(suit=Suit.spades, rank=Rank.queen),
+                Card(suit=Suit.clubs, rank=Rank.seven)
+            ]),
+            bet=100.0  # Add bet to satisfy validation
         )
         set_current_state(state)
         

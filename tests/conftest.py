@@ -2,23 +2,27 @@
 Pytest configuration and fixtures for the blackjack agent tests.
 """
 import pytest
+import pytest_asyncio
+import asyncio
+import subprocess
+import time
 import os
-from typing import Generator, Dict, Any
-from unittest.mock import Mock
+import sys
+from contextlib import contextmanager
+from typing import Generator, Dict, Any, Optional
+from datetime import datetime, timedelta
+
+# Add the project root to the Python path
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from tests.test_helpers import (
-    start_test_database,
-    stop_test_database,
-    wait_for_database,
-    reset_database,
-    setup_test_environment,
-    cleanup_test_environment,
-    create_test_user,
-    create_test_session,
-    TestDataManager,
-    get_test_database_connection,
-    TEST_DATABASE_URL
+    start_test_database, stop_test_database, wait_for_database,
+    get_test_database_url, reset_database, setup_test_environment,
+    cleanup_test_environment, TestDataManager
 )
+
+# Test database URL for integration tests
+TEST_DATABASE_URL = get_test_database_url()
 
 
 def pytest_configure(config):
@@ -44,82 +48,72 @@ def pytest_sessionfinish(session, exitstatus):
 @pytest.fixture(scope="session")
 def docker_compose():
     """
-    Session-scoped fixture to manage Docker Compose lifecycle.
+    Session-scoped fixture to manage Docker Compose for the test database.
     
     Starts the test database at the beginning of the test session
     and stops it at the end.
     """
-    # Check if database is already running
-    try:
-        with get_test_database_connection() as conn:
-            with conn.cursor() as cursor:
-                cursor.execute("SELECT 1")
-            # Database is already running, don't start/stop
-            yield
-            return
-    except Exception:
-        pass
+    print("Starting test database...")
+    start_test_database()
     
-    # Start database if not running
-    try:
-        start_test_database()
-        yield
-    finally:
-        # Only stop if we started it
-        try:
-            stop_test_database()
-        except Exception:
-            pass  # Ignore errors when stopping
-
-
-@pytest.fixture(scope="session")
-def test_database(docker_compose):
-    """
-    Session-scoped fixture providing database connection.
-    
-    Depends on docker_compose fixture to ensure database is running.
-    """
     # Wait for database to be ready
     wait_for_database()
     
-    # Test connection
-    with get_test_database_connection() as conn:
-        with conn.cursor() as cursor:
-            cursor.execute("SELECT 1")
+    yield
     
-    yield TEST_DATABASE_URL
+    print("Stopping test database...")
+    stop_test_database()
 
 
-@pytest.fixture(scope="class")
-def class_database(test_database):
+@pytest_asyncio.fixture(scope="session")
+async def test_database(docker_compose):
     """
-    Class-scoped fixture providing clean database state for each test class.
+    Session-scoped fixture providing test database access.
     
-    Resets the database before each test class to ensure clean state.
+    Ensures the test database is running and accessible.
     """
-    reset_database()
+    # Test database connection
+    from tests.test_helpers import get_test_database_connection
+    
+    async with get_test_database_connection() as conn:
+        async with conn.cursor() as cursor:
+            await cursor.execute("SELECT 1")
+            result = await cursor.fetchone()
+            assert result[0] == 1
+    
     yield test_database
 
 
-@pytest.fixture(scope="function")
-def clean_database(class_database):
+@pytest_asyncio.fixture(scope="function")
+async def class_database(test_database):
     """
-    Function-scoped fixture providing clean database state for each test.
+    Function-scoped fixture providing clean database state for test classes.
     
-    Resets the database before each test to ensure complete isolation.
+    Resets the database before each test class to ensure isolation.
     """
-    reset_database()
+    await reset_database()
+    yield class_database
+
+
+@pytest_asyncio.fixture(scope="function")
+async def clean_database(class_database):
+    """
+    Function-scoped fixture providing a clean database state.
+    
+    Resets the database and service manager before each test.
+    """
+    await reset_database()
     
     # Reset the service manager to use the test database
     from services.service_manager import service_manager
     from tests.test_helpers import TEST_DATABASE_URL
-    service_manager.reset_for_tests(TEST_DATABASE_URL)
+    await service_manager.reset_for_tests(TEST_DATABASE_URL)
     
     yield class_database
 
 
-@pytest.fixture(scope="function")
-def test_data_manager(clean_database):
+@pytest_asyncio.fixture(scope="function")
+async def test_data_manager(clean_database):
     """
     Function-scoped fixture providing test data management.
     
@@ -139,35 +133,35 @@ def test_data_manager(clean_database):
     # Ensure service manager is reset before creating test data
     from services.service_manager import service_manager
     from tests.test_helpers import TEST_DATABASE_URL
-    service_manager.reset_for_tests(TEST_DATABASE_URL)
+    await service_manager.reset_for_tests(TEST_DATABASE_URL)
     
     manager = TestDataManager()
     yield manager
     manager.cleanup()
 
 
-@pytest.fixture(scope="function")
-def test_user(test_data_manager):
+@pytest_asyncio.fixture(scope="function")
+async def test_user(test_data_manager):
     """
     Function-scoped fixture providing a standard test user.
     
     Creates a test user with default balance and returns user data.
     """
-    return test_data_manager.create_user()
+    return await test_data_manager.create_user()
 
 
-@pytest.fixture(scope="function")
-def test_session(test_user, test_data_manager):
+@pytest_asyncio.fixture(scope="function")
+async def test_session(test_user, test_data_manager):
     """
     Function-scoped fixture providing a test session for the test user.
     
     Creates a session for the test user and returns session data.
     """
-    return test_data_manager.create_session(test_user["user_id"])
+    return await test_data_manager.create_session(test_user["user_id"])
 
 
-@pytest.fixture(scope="function")
-def user_manager(clean_database):
+@pytest_asyncio.fixture(scope="function")
+async def user_manager(clean_database):
     """
     Function-scoped fixture providing a UserManager instance.
     
@@ -181,14 +175,14 @@ def user_manager(clean_database):
     
     # Create and initialize database service
     db_service = DatabaseService()
-    db_service.init_database()
+    await db_service.init_database()
     
     # Create user manager
     return UserManager(db_service)
 
 
-@pytest.fixture(scope="function")
-def db_service(clean_database):
+@pytest_asyncio.fixture(scope="function")
+async def db_service(clean_database):
     """
     Function-scoped fixture providing a database service instance.
     
@@ -201,7 +195,7 @@ def db_service(clean_database):
     
     # Create and initialize database service
     db_service = DatabaseService()
-    db_service.init_database()
+    await db_service.init_database()
     
     return db_service
 
@@ -221,19 +215,22 @@ def mock_tool_context():
     return context
 
 
-@pytest.fixture(scope="function")
-def mock_tool_context_with_data(test_user, test_session):
+@pytest_asyncio.fixture(scope="function")
+async def mock_tool_context_with_data(test_user, test_session):
     """
-    Function-scoped fixture providing a mock ToolContext with real test data.
+    Function-scoped fixture providing a mock tool context with test data.
     
-    Creates a mock ToolContext populated with actual test user and session data.
+    Creates a mock tool context with user and session data for testing.
     """
-    context = Mock()
-    context.state = {
-        "user_id": test_user["user_id"],
+    from unittest.mock import Mock
+    
+    mock_context = Mock()
+    mock_context.state = {
+        "user_id": test_user["username"],  # Use username as user_id
         "session_id": test_session["session_id"]
     }
-    return context
+    
+    return mock_context
 
 
 @pytest.fixture(scope="function")

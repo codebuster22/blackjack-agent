@@ -10,6 +10,7 @@ from tests.test_helpers import setup_test_environment
 @pytest.mark.docker
 @pytest.mark.database
 @pytest.mark.integration
+@pytest.mark.asyncio
 class TestSimpleIntegration:
     """Simple integration tests to verify basic functionality."""
     
@@ -17,7 +18,7 @@ class TestSimpleIntegration:
         """Reset game state before each test."""
         reset_game_state()
     
-    def test_simple_place_bet(self, clean_database, mock_tool_context_with_data):
+    async def test_simple_place_bet(self, clean_database, mock_tool_context_with_data):
         """
         Test simple bet placement to verify database connection works.
         Expected result: Bet placed successfully with balance updated.
@@ -28,7 +29,7 @@ class TestSimpleIntegration:
         state = GameState(shoe=shuffleShoe())
         set_current_state(state)
         
-        result = placeBet(25.0, mock_tool_context_with_data)
+        result = await placeBet(25.0, mock_tool_context_with_data)
         
         print(f"Place bet result: {result}")
         
@@ -36,7 +37,7 @@ class TestSimpleIntegration:
         assert result["bet"] == 25.0
         assert result["balance"] == 75.0  # 100 - 25
     
-    def test_simple_settle_bet(self, clean_database, mock_tool_context_with_data):
+    async def test_simple_settle_bet(self, clean_database, mock_tool_context_with_data):
         """
         Test simple bet settlement to see what the function actually returns.
         Expected result: See actual return values from settleBet.
@@ -60,10 +61,10 @@ class TestSimpleIntegration:
         set_current_state(state)
         
         # Place bet first
-        placeBet(25.0, mock_tool_context_with_data)
+        await placeBet(25.0, mock_tool_context_with_data)
         
         # Settle bet
-        result = settleBet(mock_tool_context_with_data)
+        result = await settleBet(mock_tool_context_with_data)
         
         print(f"Settle bet result: {result}")
         

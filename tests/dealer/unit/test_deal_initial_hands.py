@@ -37,13 +37,14 @@ class TestDealInitialHands:
         """
         # Create a shoe with known card order (cards are drawn from the end)
         # So we need to put the expected cards at the end
-        extra_cards = shuffleShoe()
-        known_shoe = extra_cards + [
+        base_shoe = shuffleShoe()[4:]  # Remove 4 cards to make room for known cards
+        known_shoe = base_shoe + [
             Card(suit=Suit.spades, rank=Rank.jack),   # 2nd to dealer (drawn first)
             Card(suit=Suit.clubs, rank=Rank.queen),   # 2nd to player
             Card(suit=Suit.diamonds, rank=Rank.king), # 1st to dealer
             Card(suit=Suit.hearts, rank=Rank.ace),    # 1st to player (drawn last)
         ]
+        # Total should now be 308 + 4 = 312 cards
         
         # Initialize game state
         from dealer_agent.tools.dealer import set_current_state

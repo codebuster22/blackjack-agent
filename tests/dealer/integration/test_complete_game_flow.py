@@ -10,10 +10,11 @@ from services.service_manager import service_manager
 @pytest.mark.docker
 @pytest.mark.database
 @pytest.mark.integration
+@pytest.mark.asyncio
 class TestCompleteGameFlow:
     """Comprehensive integration test for complete game flow with database."""
     
-    def test_complete_game_session(self, clean_database, mock_tool_context_with_data):
+    async def test_complete_game_session(self, clean_database, mock_tool_context_with_data):
         """
         Test a complete game session with multiple hands and different outcomes.
         Expected result: Game handles various scenarios correctly.
@@ -33,7 +34,7 @@ class TestCompleteGameFlow:
         for hand_num in range(3):
             # Place bet
             bet_amount = 20.0
-            placeBet(bet_amount, mock_tool_context_with_data)
+            await placeBet(bet_amount, mock_tool_context_with_data)
             
             # Deal initial hands
             dealInitialHands()
@@ -79,7 +80,7 @@ class TestCompleteGameFlow:
                     processDealerPlay()
             
             # Settle the bet
-            settle_result = settleBet(mock_tool_context_with_data)
+            settle_result = await settleBet(mock_tool_context_with_data)
             
             # Update statistics
             if settle_result["result"] == 'win':
@@ -106,7 +107,7 @@ class TestCompleteGameFlow:
                 assert settle_result["payout"] == bet_amount
             
             # Display state for this hand
-            display_result = displayState(revealDealerHole=True, tool_context=mock_tool_context_with_data)
+            display_result = await displayState(revealDealerHole=True, tool_context=mock_tool_context_with_data)
             assert "Player Hand:" in display_result["display_text"]
             assert "Dealer Hand:" in display_result["display_text"]
             assert "Balance:" in display_result["display_text"]
@@ -132,7 +133,7 @@ class TestCompleteGameFlow:
         current_state = get_current_state()
         assert len(current_state.shoe) > 0
     
-    def test_edge_case_continuous_play(self, clean_database, mock_tool_context_with_data):
+    async def test_edge_case_continuous_play(self, clean_database, mock_tool_context_with_data):
         """
         Test edge case of continuous play with various hand outcomes.
         Expected result: Game handles edge cases gracefully.
@@ -150,13 +151,13 @@ class TestCompleteGameFlow:
         while hand_count < max_hands:
             # Place minimum bet
             bet_amount = 5.0
-            placeBet(bet_amount, mock_tool_context_with_data)
+            await placeBet(bet_amount, mock_tool_context_with_data)
             
             # Deal hands
             dealInitialHands()
             
             # Quick settlement (no player/dealer action for speed)
-            settleBet(mock_tool_context_with_data)
+            await settleBet(mock_tool_context_with_data)
             
             # Reset for next hand
             resetForNextHand()
@@ -172,5 +173,5 @@ class TestCompleteGameFlow:
         assert len(current_state.dealer_hand.cards) == 0
         assert current_state.bet == 0.0
         # Verify balance is non-negative
-        current_balance = service_manager.user_manager.get_user_balance(mock_tool_context_with_data.state.get("user_id"))
+        current_balance = await service_manager.user_manager.get_user_balance(mock_tool_context_with_data.state.get("user_id"))
         assert current_balance >= 0.0  # Shouldn't go negative 
