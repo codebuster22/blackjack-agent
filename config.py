@@ -78,6 +78,8 @@ class PrivyConfig(BaseModel):
     """Privy configuration for external services."""
     app_id: str = Field(default="", description="Privy APP ID")
     app_secret: str = Field(default="", description="Privy APP secret")
+    base_url: str = Field(default="https://api.client.io/", description="Privy base URL")
+    environment: str = Field(default="staging", description="Privy environment")
     
     @validator('app_id')
     def validate_app_id(cls, v):
@@ -89,6 +91,19 @@ class PrivyConfig(BaseModel):
     def validate_app_secret(cls, v):
         if not v:
             raise ValueError("APP secret is required")
+        return v
+    
+    @validator('base_url')
+    def validate_base_url(cls, v):
+        if not v.startswith(('https://', 'http://')):
+            raise ValueError('Base URL must start with https:// or http://')
+        return v
+    
+    @validator('environment')   
+    def validate_environment(cls, v):
+        valid_environments = ['staging', 'production']
+        if v not in valid_environments:
+            raise ValueError(f'Environment must be one of: {valid_environments}')
         return v
 
 
@@ -193,7 +208,9 @@ def load_config() -> Config:
         # Create Privy config
         privy_config = PrivyConfig(
             app_id=os.getenv('PRIVY__API_KEY', os.getenv('PRIVY_APP_ID', '')),
-            app_secret=os.getenv('PRIVY__API_SECRET', os.getenv('PRIVY_APP_SECRET', ''))
+            app_secret=os.getenv('PRIVY__API_SECRET', os.getenv('PRIVY_APP_SECRET', '')),
+            base_url=os.getenv('PRIVY__BASE_URL', os.getenv('PRIVY_BASE_URL', 'https://api.client.io/')),
+            environment=os.getenv('PRIVY__ENVIRONMENT', os.getenv('PRIVY_ENVIRONMENT', 'staging'))
         )
         
         # Create main config

@@ -45,6 +45,8 @@ USERS_TABLE_SQL = """
 CREATE TABLE IF NOT EXISTS users (
     user_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     username VARCHAR(50) UNIQUE NOT NULL,
+    privy_wallet_id VARCHAR(255) UNIQUE NOT NULL,
+    privy_wallet_address VARCHAR(255) UNIQUE NOT NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     current_balance DECIMAL(15,2) NOT NULL DEFAULT 100.0,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
