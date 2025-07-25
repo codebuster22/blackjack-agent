@@ -73,6 +73,24 @@ class APIConfig(BaseModel):
         if isinstance(v, str):
             return v.lower() in ('true', '1', 'yes', 'on')
         return bool(v)
+    
+class PrivyConfig(BaseModel):
+    """Privy configuration for external services."""
+    app_id: str = Field(default="", description="Privy APP ID")
+    app_secret: str = Field(default="", description="Privy APP secret")
+    
+    @validator('app_id')
+    def validate_app_id(cls, v):
+        if not v:
+            raise ValueError("APP ID is required")
+        return v
+    
+    @validator('app_secret')
+    def validate_app_secret(cls, v):
+        if not v:
+            raise ValueError("APP secret is required")
+        return v
+
 
 class Config(BaseSettings):
     """Main configuration class that loads from environment variables."""
@@ -91,6 +109,9 @@ class Config(BaseSettings):
     
     # API configuration
     api: APIConfig = Field(default_factory=APIConfig)
+
+    # Privy configuration
+    privy: PrivyConfig = Field(default_factory=PrivyConfig)
     
     # Environment
     environment: str = Field(default="development", description="Environment (development, staging, production)")
@@ -168,6 +189,12 @@ def load_config() -> Config:
             google_api_key=os.getenv('API__GOOGLE_API_KEY', os.getenv('GOOGLE_API_KEY', '')),
             xai_api_key=os.getenv('API__XAI_API_KEY', os.getenv('XAI_API_KEY', ''))
         )
+
+        # Create Privy config
+        privy_config = PrivyConfig(
+            app_id=os.getenv('PRIVY__API_KEY', os.getenv('PRIVY_APP_ID', '')),
+            app_secret=os.getenv('PRIVY__API_SECRET', os.getenv('PRIVY_APP_SECRET', ''))
+        )
         
         # Create main config
         config = Config(
@@ -176,6 +203,7 @@ def load_config() -> Config:
             logging=logging_config,
             game=game_config,
             api=api_config,
+            privy=privy_config,
             environment=os.getenv('ENVIRONMENT', 'development'),
             debug=os.getenv('DEBUG', 'false').lower() == 'true'
         )
