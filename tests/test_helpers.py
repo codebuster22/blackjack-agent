@@ -10,6 +10,22 @@ from contextlib import asynccontextmanager
 from datetime import datetime
 import psycopg
 import pytest
+import asyncio
+import logging
+from typing import Optional, Dict, Any
+from contextlib import asynccontextmanager
+from unittest.mock import AsyncMock, MagicMock
+
+import psycopg
+from psycopg.rows import dict_row
+from web3 import Web3
+from eth_account import Account
+
+from config import get_config
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # Test database configuration
 TEST_DB_CONFIG = {
@@ -225,14 +241,14 @@ async def reset_database() -> None:
 async def create_test_user(username: Optional[str] = None, initial_balance: float = 100.0) -> Dict[str, Any]:
     """
     Create a test user with the given username and initial balance.
-    
+
     Args:
         username: Username for the test user (generates UUID5 if None)
         initial_balance: Initial chip balance
-        
+
     Returns:
         Dict[str, Any]: User data including user_id and username
-        
+
     Raises:
         DatabaseError: If user creation fails
     """
@@ -242,8 +258,15 @@ async def create_test_user(username: Optional[str] = None, initial_balance: floa
     try:
         from services.service_manager import service_manager
         
-        # Create user using the service manager (which should be configured for tests)
-        username = await service_manager.user_manager.create_user_if_not_exists(username)
+        # Use mock wallet service for tests to avoid real blockchain transactions
+        mock_wallet_service = MockWalletService()
+        
+        # Create user using the mock wallet service
+        username = await service_manager.user_manager.create_user_if_not_exists(username, mock_wallet_service)
+        
+        # Get wallet info (from mock)
+        wallet_info = await service_manager.user_manager.get_user_wallet_info(username)
+        wallet_address = wallet_info['wallet_address']
         
         # Set initial balance if different from default
         if initial_balance != 100.0:  # Default from config
@@ -252,7 +275,9 @@ async def create_test_user(username: Optional[str] = None, initial_balance: floa
         return {
             "user_id": username,  # For backward compatibility, return username as user_id
             "username": username,
-            "balance": initial_balance
+            "balance": initial_balance,
+            "wallet_address": wallet_address,
+            "funded": True  # Mock wallets are always "funded"
         }
     except Exception as e:
         raise DatabaseError(f"Failed to create test user: {e}")
@@ -296,6 +321,81 @@ def get_test_balance() -> float:
     return 100.0
 
 
+async def fund_wallet_with_eth(wallet_address: str, amount_eth: float = 0.002) -> bool:
+    """
+    Fund a wallet with ETH using the dealer's private key.
+    
+    Args:
+        wallet_address: The wallet address to fund
+        amount_eth: Amount of ETH to send (default: 0.002 ETH)
+        
+    Returns:
+        bool: True if successful, False otherwise
+    """
+    try:
+        # Get dealer private key from environment
+        dealer_private_key = os.getenv('DEALER_PRIVATE_KEY')
+        if not dealer_private_key:
+            logger.warning("DEALER_PRIVATE_KEY not found, skipping wallet funding")
+            return False
+        
+        # Get RPC URL from config
+        config = get_config()
+        rpc_url = os.getenv('RPC_URL', 'https://testnet-rpc.monad.xyz')
+        
+        # Initialize Web3
+        w3 = Web3(Web3.HTTPProvider(rpc_url))
+        
+        # Create account from private key
+        dealer_account = Account.from_key(dealer_private_key)
+        dealer_address = dealer_account.address
+        
+        logger.info(f"Funding wallet {wallet_address} with {amount_eth} ETH from {dealer_address}")
+        
+        # Convert ETH to Wei
+        amount_wei = w3.to_wei(amount_eth, 'ether')
+        
+        # Get current gas price
+        gas_price = w3.eth.gas_price
+        
+        # Estimate gas for the transaction
+        gas_estimate = w3.eth.estimate_gas({
+            'from': dealer_address,
+            'to': wallet_address,
+            'value': amount_wei
+        })
+        
+        # Build transaction
+        transaction = {
+            'from': dealer_address,
+            'to': wallet_address,
+            'value': amount_wei,
+            'gas': gas_estimate,
+            'gasPrice': gas_price,
+            'nonce': w3.eth.get_transaction_count(dealer_address),
+        }
+        
+        # Sign transaction
+        signed_txn = w3.eth.account.sign_transaction(transaction, dealer_private_key)
+        
+        # Send transaction
+        tx_hash = w3.eth.send_raw_transaction(signed_txn.rawTransaction)
+        
+        # Wait for transaction to be mined
+        tx_receipt = w3.eth.wait_for_transaction_receipt(tx_hash, timeout=60)
+        
+        if tx_receipt.status == 1:
+            logger.info(f"Successfully funded wallet {wallet_address} with {amount_eth} ETH. TX: {tx_hash.hex()}")
+            return True
+        else:
+            logger.error(f"Transaction failed for wallet {wallet_address}")
+            return False
+            
+    except Exception as e:
+        logger.error(f"Failed to fund wallet {wallet_address}: {e}")
+        return False
+
+
 def setup_test_environment() -> None:
     """
     Set up the test environment by setting all required environment variables.
@@ -327,6 +427,17 @@ def setup_test_environment() -> None:
     os.environ["API__GOOGLE_GENAI_USE_VERTEXAI"] = "false"
     os.environ["API__GOOGLE_API_KEY"] = "test_key"
     os.environ["API__XAI_API_KEY"] = "test_xai_key"
+    
+    # Privy Configuration
+    os.environ["PRIVY__APP_ID"] = "cmdiixr3500b6js0j81dkty6g"
+    os.environ["PRIVY__APP_SECRET"] = "4qgfY9qPy8vzjE4XVzk24y2NzXmvMMtRquQZYJds2kXF1t73g9y7LKzvy7eKsYXC25eurz71TGcrtXXxoMhasLr7"
+    os.environ["PRIVY__BASE_URL"] = "https://api.privy.io/"
+    os.environ["PRIVY__ENVIRONMENT"] = "staging"
+    os.environ["PRIVY__REGISTRATION_CONTRACT_ADDRESS"] = "0x0000000000000000000000000000000000000000"
+    os.environ["PRIVY__CAIP_CHAIN_ID"] = "eip155:10143"
+    
+    # Blockchain Configuration
+    os.environ["RPC_URL"] = "https://testnet-rpc.monad.xyz"
 
 
 def cleanup_test_environment() -> None:
@@ -345,11 +456,69 @@ def cleanup_test_environment() -> None:
         # Environment
         "ENVIRONMENT", "DEBUG",
         # API Configuration
-        "API__GOOGLE_GENAI_USE_VERTEXAI", "API__GOOGLE_API_KEY", "API__XAI_API_KEY"
+        "API__GOOGLE_GENAI_USE_VERTEXAI", "API__GOOGLE_API_KEY", "API__XAI_API_KEY",
+        # Privy Configuration
+        "PRIVY__APP_ID", "PRIVY__APP_SECRET", "PRIVY__BASE_URL", "PRIVY__ENVIRONMENT",
+        "PRIVY__REGISTRATION_CONTRACT_ADDRESS", "PRIVY__CAIP_CHAIN_ID",
+        # Blockchain Configuration
+        "RPC_URL"
     ]
     
     for key in test_env_vars:
         os.environ.pop(key, None)
+
+
+# Mock Wallet Service for testing
+class MockWalletService:
+    """Mock wallet service for testing user creation."""
+    
+    def __init__(self):
+        self.created_wallets = {}
+    
+    async def register_user_onchain(self):
+        """Mock wallet creation and registration - no real blockchain transaction."""
+        # Generate mock wallet data
+        wallet_id = f"mock_wallet_{uuid.uuid4().hex[:8]}"
+        wallet_address = f"0x{uuid.uuid4().hex[:40]}"
+        
+        # Create mock wallet wrapper
+        mock_wallet = MagicMock()
+        mock_wallet.get_wallet_id.return_value = wallet_id
+        mock_wallet.get_wallet_address.return_value = wallet_address
+        
+        # Store for potential future use
+        self.created_wallets[wallet_id] = wallet_address
+        
+        # Mock transaction hash (no real transaction)
+        tx_hash = f"0x{uuid.uuid4().hex[:64]}"
+        
+        return mock_wallet, tx_hash
+    
+    async def create_wallet(self):
+        """Mock wallet creation."""
+        wallet_id = f"mock_wallet_{uuid.uuid4().hex[:8]}"
+        wallet_address = f"0x{uuid.uuid4().hex[:40]}"
+        
+        mock_wallet = MagicMock()
+        mock_wallet.get_wallet_id.return_value = wallet_id
+        mock_wallet.get_wallet_address.return_value = wallet_address
+        
+        self.created_wallets[wallet_id] = wallet_address
+        return mock_wallet
+    
+    async def get_wallet(self, wallet_id: str):
+        """Mock wallet retrieval."""
+        if wallet_id in self.created_wallets:
+            mock_wallet = MagicMock()
+            mock_wallet.get_wallet_id.return_value = wallet_id
+            mock_wallet.get_wallet_address.return_value = self.created_wallets[wallet_id]
+            return mock_wallet
+        else:
+            raise ValueError(f"Wallet {wallet_id} not found")
+    
+    def is_initialized(self):
+        """Mock initialization check."""
+        return True
 
 
 class TestDataManager:  # noqa: N801

@@ -158,10 +158,10 @@ def test_with_database(clean_database):
 #### Service Fixtures
 
 ```python
-def test_with_services(user_manager, db_service):
+def test_with_services(user_manager, db_service, wallet_service):
     """Test that uses initialized services."""
     # Services are properly configured with test environment
-    user_id = user_manager.create_user_if_not_exists("test_user")
+    user_id = user_manager.create_user_if_not_exists("test_user", wallet_service)
     assert user_id is not None
 ```
 
@@ -221,9 +221,9 @@ Tests that interact with application services (UserManager, DatabaseService):
 class TestUserService:
     """Test user service functionality."""
     
-    def test_user_creation(self, clean_database, user_manager):
+    def test_user_creation(self, clean_database, user_manager, wallet_service):
         """Test user creation through service."""
-        user_id = user_manager.create_user_if_not_exists("test_user")
+        user_id = user_manager.create_user_if_not_exists("test_user", wallet_service)
         assert user_id is not None
         
         # Verify user was created

@@ -1,22 +1,25 @@
 """
-Integration tests for user manager service.
-Tests real database operations with proper isolation.
+Integration tests for UserManager service.
+Tests user creation, balance operations, and session management.
 """
+
 import pytest
 import uuid
 from datetime import datetime, timedelta
-from typing import Dict, Any
+from unittest.mock import AsyncMock, MagicMock
 
 from services.user_manager import UserManager
 from services.db import DatabaseService
 from tests.test_helpers import get_test_database_connection
 
+# Import the MockWalletService from test_helpers
+from tests.test_helpers import MockWalletService
 
 @pytest.mark.integration
 @pytest.mark.docker
 @pytest.mark.database
 class TestUserManager:
-    """Integration tests for UserManager."""
+    """Integration tests for UserManager service."""
     
     @pytest.mark.asyncio
     async def test_create_user_if_not_exists_new_user(self, clean_database):
@@ -24,23 +27,28 @@ class TestUserManager:
         db_service = DatabaseService()
         await db_service.init_database()
         user_manager = UserManager(db_service)
+        mock_wallet_service = MockWalletService()
         
         # Test creating new user
-        username = await user_manager.create_user_if_not_exists("new_user")
+        username = await user_manager.create_user_if_not_exists("new_user", mock_wallet_service)
         
         assert username == "new_user"
         
-        # Verify user was created
+        # Verify user was created with wallet info
         async with get_test_database_connection() as conn:
             async with conn.cursor() as cursor:
                 await cursor.execute("""
-                    SELECT username, current_balance FROM users WHERE username = %s
+                    SELECT username, current_balance, privy_wallet_id, privy_wallet_address 
+                    FROM users WHERE username = %s
                 """, (username,))
                 user = await cursor.fetchone()
                 
                 assert user is not None
                 assert user[0] == "new_user"
                 assert user[1] == 100.0  # Default starting chips
+                assert user[2] is not None  # wallet_id should be set
+                assert user[3] is not None  # wallet_address should be set
+                assert user[3].startswith("0x")  # Should be valid address format
         
         await db_service.close()
     
@@ -50,12 +58,13 @@ class TestUserManager:
         db_service = DatabaseService()
         await db_service.init_database()
         user_manager = UserManager(db_service)
+        mock_wallet_service = MockWalletService()
         
         # Create user first time
-        username1 = await user_manager.create_user_if_not_exists("existing_user")
+        username1 = await user_manager.create_user_if_not_exists("existing_user", mock_wallet_service)
         
         # Try to create same user again
-        username2 = await user_manager.create_user_if_not_exists("existing_user")
+        username2 = await user_manager.create_user_if_not_exists("existing_user", mock_wallet_service)
         
         # Should return same username
         assert username1 == username2 == "existing_user"
@@ -68,13 +77,14 @@ class TestUserManager:
         db_service = DatabaseService()
         await db_service.init_database()
         user_manager = UserManager(db_service)
+        mock_wallet_service = MockWalletService()
         
         # Create a user first
-        username1 = await user_manager.create_user_if_not_exists("test_user")
+        username1 = await user_manager.create_user_if_not_exists("test_user", mock_wallet_service)
         
         # Try to create user with invalid characters that might cause DB error
         with pytest.raises(ValueError, match="Failed to create user"):
-            await user_manager.create_user_if_not_exists("test_user_with_very_long_username_that_exceeds_database_column_limit_and_causes_an_error")
+            await user_manager.create_user_if_not_exists("test_user_with_very_long_username_that_exceeds_database_column_limit_and_causes_an_error", mock_wallet_service)
         
         await db_service.close()
     
@@ -85,14 +95,14 @@ class TestUserManager:
         await db_service.init_database()
         user_manager = UserManager(db_service)
         
-        # Create test user
+        # Create test user with wallet info
         async with get_test_database_connection() as conn:
             async with conn.cursor() as cursor:
                 await cursor.execute("""
-                    INSERT INTO users (username, current_balance)
-                    VALUES (%s, %s)
+                    INSERT INTO users (username, privy_wallet_id, privy_wallet_address, current_balance)
+                    VALUES (%s, %s, %s, %s)
                     RETURNING user_id
-                """, ("test_user", 150.0))
+                """, ("test_user", "test_wallet_id", "0x1234567890123456789012345678901234567890", 150.0))
                 user_id = (await cursor.fetchone())[0]
                 await conn.commit()
         
@@ -771,7 +781,8 @@ class TestUserManager:
         user_manager = UserManager(db_service)
         
         # Create user and test full cycle
-        username = await user_manager.create_user_if_not_exists("test_user")
+        mock_wallet_service = MockWalletService()
+        username = await user_manager.create_user_if_not_exists("test_user", mock_wallet_service)
         
         # Initial balance should be 100.0
         balance = await user_manager.get_user_balance(username)
@@ -805,7 +816,8 @@ class TestUserManager:
         user_manager = UserManager(db_service)
         
         # Create user
-        username = await user_manager.create_user_if_not_exists("test_user")
+        mock_wallet_service = MockWalletService()
+        username = await user_manager.create_user_if_not_exists("test_user", mock_wallet_service)
         
         # Create session
         session_id = await user_manager.create_session(username)
@@ -843,7 +855,8 @@ class TestUserManager:
         user_manager = UserManager(db_service)
         
         # Create user
-        username = await user_manager.create_user_if_not_exists("test_user")
+        mock_wallet_service = MockWalletService()
+        username = await user_manager.create_user_if_not_exists("test_user", mock_wallet_service)
         user = await user_manager._get_user_by_username(username)
         user_id = user["user_id"]
         
@@ -878,5 +891,70 @@ class TestUserManager:
                 """, (session_ids[2],))
                 status = (await cursor.fetchone())[0]
                 assert status == "active"
+        
+        await db_service.close() 
+    
+    @pytest.mark.asyncio
+    async def test_get_user_wallet_info_by_username(self, clean_database):
+        """Test getting wallet info by username."""
+        db_service = DatabaseService()
+        await db_service.init_database()
+        user_manager = UserManager(db_service)
+        
+        # Create test user with wallet info
+        async with get_test_database_connection() as conn:
+            async with conn.cursor() as cursor:
+                await cursor.execute("""
+                    INSERT INTO users (username, privy_wallet_id, privy_wallet_address, current_balance)
+                    VALUES (%s, %s, %s, %s)
+                    RETURNING user_id
+                """, ("test_user", "test_wallet_id_123", "0x1234567890123456789012345678901234567890", 100.0))
+                user_id = (await cursor.fetchone())[0]
+                await conn.commit()
+        
+        # Test getting wallet info by username
+        wallet_info = await user_manager.get_user_wallet_info("test_user")
+        
+        assert wallet_info["wallet_id"] == "test_wallet_id_123"
+        assert wallet_info["wallet_address"] == "0x1234567890123456789012345678901234567890"
+        
+        await db_service.close()
+    
+    @pytest.mark.asyncio
+    async def test_get_user_wallet_info_by_user_id(self, clean_database):
+        """Test getting wallet info by user_id."""
+        db_service = DatabaseService()
+        await db_service.init_database()
+        user_manager = UserManager(db_service)
+        
+        # Create test user with wallet info
+        async with get_test_database_connection() as conn:
+            async with conn.cursor() as cursor:
+                await cursor.execute("""
+                    INSERT INTO users (username, privy_wallet_id, privy_wallet_address, current_balance)
+                    VALUES (%s, %s, %s, %s)
+                    RETURNING user_id
+                """, ("test_user", "test_wallet_id_456", "0xabcdef1234567890abcdef1234567890abcdef12", 100.0))
+                user_id = (await cursor.fetchone())[0]
+                await conn.commit()
+        
+        # Test getting wallet info by user_id
+        wallet_info = await user_manager.get_user_wallet_info(str(user_id))
+        
+        assert wallet_info["wallet_id"] == "test_wallet_id_456"
+        assert wallet_info["wallet_address"] == "0xabcdef1234567890abcdef1234567890abcdef12"
+        
+        await db_service.close()
+    
+    @pytest.mark.asyncio
+    async def test_get_user_wallet_info_user_not_found(self, clean_database):
+        """Test getting wallet info for non-existent user."""
+        db_service = DatabaseService()
+        await db_service.init_database()
+        user_manager = UserManager(db_service)
+        
+        # Test with non-existent user
+        with pytest.raises(ValueError, match="User not found"):
+            await user_manager.get_user_wallet_info("nonexistent_user")
         
         await db_service.close() 

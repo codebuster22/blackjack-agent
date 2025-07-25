@@ -1,5 +1,8 @@
 # Makefile for blackjack-agent project
 
+# Use zsh explicitly
+SHELL := /usr/bin/zsh
+
 .PHONY: help test test-unit test-db test-integration test-all setup teardown clean docker-start docker-stop docker-restart docker-status migrate
 
 # Default target

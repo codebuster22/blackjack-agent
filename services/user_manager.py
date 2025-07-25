@@ -23,18 +23,20 @@ class UserManager:
     def __init__(self, db_service):
         self.db_service = db_service
     
-    async def create_user_if_not_exists(self, username: str) -> str:
+    async def create_user_if_not_exists(self, username: str, wallet_service) -> str:
         """
         Create user if not exists, return username.
+        Creates a wallet and registers it onchain before creating the user.
         
         Args:
             username: The username for the user
+            wallet_service: WalletService instance for creating wallets
             
         Returns:
             str: The username (existing or newly created)
             
         Raises:
-            ValueError: If username is invalid
+            ValueError: If username is invalid or wallet creation fails
         """
         try:
             # Check if user exists
@@ -42,20 +44,29 @@ class UserManager:
             if existing_user:
                 return username
             
-            # Create new user
+            # Create wallet and register onchain
+            logger.info(f"Creating wallet for new user: {username}")
+            wallet, tx_hash = await wallet_service.register_user_onchain()
+            wallet_id = wallet.get_wallet_id()
+            wallet_address = wallet.get_wallet_address()
+            
+            logger.info(f"Wallet created for {username}: {wallet_id} at {wallet_address}")
+            logger.info(f"Registration transaction: {tx_hash}")
+            
+            # Create new user with wallet information
             async with self.db_service.get_connection() as conn:
                 async with conn.cursor() as cursor:
                     await cursor.execute("""
-                        INSERT INTO users (username, current_balance)
-                        VALUES (%s, %s)
+                        INSERT INTO users (username, privy_wallet_id, privy_wallet_address, current_balance)
+                        VALUES (%s, %s, %s, %s)
                         RETURNING user_id
-                    """, (username, get_config().game.starting_chips))
+                    """, (username, wallet_id, wallet_address, get_config().game.starting_chips))
                     
                     result = await cursor.fetchone()
                     user_id = result[0]
                     await conn.commit()
                     
-                    logger.info(f"Created new user: {username} with ID: {user_id}")
+                    logger.info(f"Created new user: {username} with ID: {user_id} and wallet: {wallet_id}")
                     return username
                     
         except Exception as e:
@@ -317,6 +328,55 @@ class UserManager:
             logger.error(f"Failed to cleanup abandoned sessions: {e}")
             return 0
     
+    async def get_user_wallet_info(self, identifier: str) -> Dict[str, str]:
+        """
+        Get wallet information by username or user_id.
+        
+        Args:
+            identifier: Username or user_id
+            
+        Returns:
+            Dict: Contains 'wallet_id' and 'wallet_address'
+            
+        Raises:
+            ValueError: If user not found
+        """
+        try:
+            async with self.db_service.get_connection() as conn:
+                async with conn.cursor(row_factory=dict_row) as cursor:
+                    # Try to find by username first, then by user_id
+                    # Check if identifier looks like a UUID
+                    import uuid
+                    try:
+                        # Try to parse as UUID
+                        uuid.UUID(identifier)
+                        # It's a UUID, search by user_id
+                        await cursor.execute("""
+                            SELECT privy_wallet_id, privy_wallet_address 
+                            FROM users 
+                            WHERE user_id = %s
+                        """, (identifier,))
+                    except ValueError:
+                        # It's not a UUID, search by username
+                        await cursor.execute("""
+                            SELECT privy_wallet_id, privy_wallet_address 
+                            FROM users 
+                            WHERE username = %s
+                        """, (identifier,))
+                    
+                    result = await cursor.fetchone()
+                    if not result:
+                        raise ValueError(f"User not found: {identifier}")
+                    
+                    return {
+                        'wallet_id': result['privy_wallet_id'],
+                        'wallet_address': result['privy_wallet_address']
+                    }
+                    
+        except Exception as e:
+            logger.error(f"Failed to get wallet info for {identifier}: {e}")
+            raise ValueError(f"Failed to get wallet info: {e}")
+
     async def _get_user_by_username(self, username: str) -> Optional[Dict[str, Any]]:
         """
         Get user by username.

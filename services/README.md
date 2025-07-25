@@ -57,8 +57,8 @@ success = db_service.init_database("postgresql://user:pass@localhost/dbname")
 ```python
 from services import user_manager
 
-# Create user if not exists
-user_id = user_manager.create_user_if_not_exists(username)
+# Create user if not exists (requires wallet_service)
+user_id = user_manager.create_user_if_not_exists(username, wallet_service)
 
 # Create a new session
 session_id = user_manager.create_session(user_id)
@@ -86,7 +86,7 @@ card_back = string_to_card("AH")
 ### 4. Database Operations
 ```python
 # Create user and session
-user_id = user_manager.create_user_if_not_exists(username)
+user_id = user_manager.create_user_if_not_exists(username, wallet_service)
 session_id = user_manager.create_session(user_id)
 
 # Save round data

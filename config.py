@@ -80,6 +80,8 @@ class PrivyConfig(BaseModel):
     app_secret: str = Field(default="", description="Privy APP secret")
     base_url: str = Field(default="https://api.client.io/", description="Privy base URL")
     environment: str = Field(default="staging", description="Privy environment")
+    registration_contract_address: str = Field(default="0x0000000000000000000000000000000000000000", description="Registration contract address")
+    caip_chain_id: str = Field(default="eip155:10143", description="CAIP-2 chain ID")
     
     @validator('app_id')
     def validate_app_id(cls, v):
@@ -210,7 +212,9 @@ def load_config() -> Config:
             app_id=os.getenv('PRIVY__API_KEY', os.getenv('PRIVY_APP_ID', '')),
             app_secret=os.getenv('PRIVY__API_SECRET', os.getenv('PRIVY_APP_SECRET', '')),
             base_url=os.getenv('PRIVY__BASE_URL', os.getenv('PRIVY_BASE_URL', 'https://api.client.io/')),
-            environment=os.getenv('PRIVY__ENVIRONMENT', os.getenv('PRIVY_ENVIRONMENT', 'staging'))
+            environment=os.getenv('PRIVY__ENVIRONMENT', os.getenv('PRIVY_ENVIRONMENT', 'staging')),
+            registration_contract_address=os.getenv('PRIVY__REGISTRATION_CONTRACT_ADDRESS', os.getenv('PRIVY_REGISTRATION_CONTRACT_ADDRESS', '0x0000000000000000000000000000000000000000')),
+            caip_chain_id=os.getenv('PRIVY__CAIP_CHAIN_ID', os.getenv('PRIVY_CAIP_CHAIN_ID', 'eip155:10143'))
         )
         
         # Create main config

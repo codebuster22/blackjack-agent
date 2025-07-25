@@ -34,7 +34,7 @@ async def ensure_user_and_session() -> Session:
     """
     try:
         # Check if user exists, create if not
-        await service_manager.user_manager.create_user_if_not_exists(user_id)
+        await service_manager.user_manager.create_user_if_not_exists(user_id, service_manager.wallet_service)
 
         session_id = await service_manager.user_manager.create_session(user_id)
         
