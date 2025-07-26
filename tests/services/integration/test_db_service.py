@@ -113,10 +113,10 @@ class TestDatabaseService:
         async with get_test_database_connection() as conn:
             async with conn.cursor() as cursor:
                 await cursor.execute("""
-                    INSERT INTO users (username, current_balance)
-                    VALUES (%s, %s)
+                    INSERT INTO users (username, privy_wallet_id, privy_wallet_address, current_balance)
+                    VALUES (%s, %s, %s, %s)
                     RETURNING user_id
-                """, ("test_user", 100.0))
+                """, ("test_user", "mock_wallet_id_1", "0x1234567890123456789012345678901234567890", 100.0))
                 user_id = (await cursor.fetchone())[0]
                 await conn.commit()
         
@@ -166,10 +166,10 @@ class TestDatabaseService:
         async with get_test_database_connection() as conn:
             async with conn.cursor() as cursor:
                 await cursor.execute("""
-                    INSERT INTO users (username, current_balance)
-                    VALUES (%s, %s)
+                    INSERT INTO users (username, privy_wallet_id, privy_wallet_address, current_balance)
+                    VALUES (%s, %s, %s, %s)
                     RETURNING user_id
-                """, ("test_user", 100.0))
+                """, ("test_user", "mock_wallet_id_2", "0x2345678901234567890123456789012345678901", 100.0))
                 user_id = (await cursor.fetchone())[0]
                 await conn.commit()
         
@@ -194,10 +194,10 @@ class TestDatabaseService:
         async with get_test_database_connection() as conn:
             async with conn.cursor() as cursor:
                 await cursor.execute("""
-                    INSERT INTO users (username, current_balance)
-                    VALUES (%s, %s)
+                    INSERT INTO users (username, privy_wallet_id, privy_wallet_address, current_balance)
+                    VALUES (%s, %s, %s, %s)
                     RETURNING user_id
-                """, ("test_user", 100.0))
+                """, ("test_user", "mock_wallet_id_3", "0x3456789012345678901234567890123456789012", 100.0))
                 user_id = (await cursor.fetchone())[0]
                 
                 session_id = str(uuid.uuid4())
@@ -294,10 +294,10 @@ class TestDatabaseService:
         async with get_test_database_connection() as conn:
             async with conn.cursor() as cursor:
                 await cursor.execute("""
-                    INSERT INTO users (username, current_balance)
-                    VALUES (%s, %s)
+                    INSERT INTO users (username, privy_wallet_id, privy_wallet_address, current_balance)
+                    VALUES (%s, %s, %s, %s)
                     RETURNING user_id
-                """, ("test_user", 100.0))
+                """, ("test_user", "mock_wallet_id_4", "0x4567890123456789012345678901234567890123", 100.0))
                 user_id = (await cursor.fetchone())[0]
                 
                 session_id = str(uuid.uuid4())
@@ -342,10 +342,10 @@ class TestDatabaseService:
         async with get_test_database_connection() as conn:
             async with conn.cursor() as cursor:
                 await cursor.execute("""
-                    INSERT INTO users (username, current_balance)
-                    VALUES (%s, %s)
+                    INSERT INTO users (username, privy_wallet_id, privy_wallet_address, current_balance)
+                    VALUES (%s, %s, %s, %s)
                     RETURNING user_id
-                """, ("test_user", 100.0))
+                """, ("test_user", "mock_wallet_id_5", "0x5678901234567890123456789012345678901234", 100.0))
                 user_id = (await cursor.fetchone())[0]
                 
                 session_id = str(uuid.uuid4())
@@ -383,10 +383,10 @@ class TestDatabaseService:
         async with get_test_database_connection() as conn:
             async with conn.cursor() as cursor:
                 await cursor.execute("""
-                    INSERT INTO users (username, current_balance)
-                    VALUES (%s, %s)
+                    INSERT INTO users (username, privy_wallet_id, privy_wallet_address, current_balance)
+                    VALUES (%s, %s, %s, %s)
                     RETURNING user_id
-                """, ("test_user", 100.0))
+                """, ("test_user", "mock_wallet_id_6", "0x6789012345678901234567890123456789012345", 100.0))
                 user_id = (await cursor.fetchone())[0]
                 
                 # Create multiple sessions
@@ -418,10 +418,10 @@ class TestDatabaseService:
         async with get_test_database_connection() as conn:
             async with conn.cursor() as cursor:
                 await cursor.execute("""
-                    INSERT INTO users (username, current_balance)
-                    VALUES (%s, %s)
+                    INSERT INTO users (username, privy_wallet_id, privy_wallet_address, current_balance)
+                    VALUES (%s, %s, %s, %s)
                     RETURNING user_id
-                """, ("test_user", 100.0))
+                """, ("test_user", "mock_wallet_id_7", "0x7890123456789012345678901234567890123456", 100.0))
                 user_id = (await cursor.fetchone())[0]
                 await conn.commit()
         
@@ -453,10 +453,10 @@ class TestDatabaseService:
         async with get_test_database_connection() as conn:
             async with conn.cursor() as cursor:
                 await cursor.execute("""
-                    INSERT INTO users (username, current_balance)
-                    VALUES (%s, %s)
+                    INSERT INTO users (username, privy_wallet_id, privy_wallet_address, current_balance)
+                    VALUES (%s, %s, %s, %s)
                     RETURNING user_id
-                """, ("test_user", 100.0))
+                """, ("test_user", "mock_wallet_id_8", "0x8901234567890123456789012345678901234567", 100.0))
                 user_id = (await cursor.fetchone())[0]
                 
                 session_id = str(uuid.uuid4())
@@ -504,10 +504,10 @@ class TestDatabaseService:
         async with get_test_database_connection() as conn:
             async with conn.cursor() as cursor:
                 await cursor.execute("""
-                    INSERT INTO users (username, current_balance)
-                    VALUES (%s, %s)
+                    INSERT INTO users (username, privy_wallet_id, privy_wallet_address, current_balance)
+                    VALUES (%s, %s, %s, %s)
                     RETURNING user_id
-                """, ("test_user", 100.0))
+                """, ("test_user", "mock_wallet_id_9", "0x9012345678901234567890123456789012345678", 100.0))
                 user_id = (await cursor.fetchone())[0]
                 
                 session_id = str(uuid.uuid4())
@@ -540,10 +540,10 @@ class TestDatabaseService:
         async with get_test_database_connection() as conn:
             async with conn.cursor() as cursor:
                 await cursor.execute("""
-                    INSERT INTO users (username, current_balance)
-                    VALUES (%s, %s)
+                    INSERT INTO users (username, privy_wallet_id, privy_wallet_address, current_balance)
+                    VALUES (%s, %s, %s, %s)
                     RETURNING user_id
-                """, ("test_user", 100.0))
+                """, ("test_user", "mock_wallet_id_10", "0xa023456789012345678901234567890123456789", 100.0))
                 user_id = (await cursor.fetchone())[0]
                 
                 session_id = str(uuid.uuid4())
@@ -612,10 +612,10 @@ class TestDatabaseService:
         async with get_test_database_connection() as conn:
             async with conn.cursor() as cursor:
                 await cursor.execute("""
-                    INSERT INTO users (username, current_balance)
-                    VALUES (%s, %s)
+                    INSERT INTO users (username, privy_wallet_id, privy_wallet_address, current_balance)
+                    VALUES (%s, %s, %s, %s)
                     RETURNING user_id
-                """, ("test_user", 100.0))
+                """, ("test_user", "mock_wallet_id_11", "0xb034567890123456789012345678901234567890", 100.0))
                 user_id = (await cursor.fetchone())[0]
                 
                 session_id = str(uuid.uuid4())
@@ -649,10 +649,10 @@ class TestDatabaseService:
         async with get_test_database_connection() as conn:
             async with conn.cursor() as cursor:
                 await cursor.execute("""
-                    INSERT INTO users (username, current_balance)
-                    VALUES (%s, %s)
+                    INSERT INTO users (username, privy_wallet_id, privy_wallet_address, current_balance)
+                    VALUES (%s, %s, %s, %s)
                     RETURNING user_id
-                """, ("test_user", 100.0))
+                """, ("test_user", "mock_wallet_id_12", "0xc045678901234567890123456789012345678901", 100.0))
                 user_id = (await cursor.fetchone())[0]
                 
                 session_id = str(uuid.uuid4())
@@ -687,10 +687,10 @@ class TestDatabaseService:
         async with get_test_database_connection() as conn:
             async with conn.cursor() as cursor:
                 await cursor.execute("""
-                    INSERT INTO users (username, current_balance)
-                    VALUES (%s, %s)
+                    INSERT INTO users (username, privy_wallet_id, privy_wallet_address, current_balance)
+                    VALUES (%s, %s, %s, %s)
                     RETURNING user_id
-                """, ("test_user", 100.0))
+                """, ("test_user", "mock_wallet_id_13", "0xd056789012345678901234567890123456789012", 100.0))
                 user_id = (await cursor.fetchone())[0]
                 
                 session_id = str(uuid.uuid4())

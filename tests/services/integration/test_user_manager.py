@@ -149,10 +149,10 @@ class TestUserManager:
         async with get_test_database_connection() as conn:
             async with conn.cursor() as cursor:
                 await cursor.execute("""
-                    INSERT INTO users (username, current_balance)
-                    VALUES (%s, %s)
+                    INSERT INTO users (username, privy_wallet_id, privy_wallet_address, current_balance)
+                    VALUES (%s, %s, %s, %s)
                     RETURNING user_id
-                """, ("test_user", 100.0))
+                """, ("test_user", "mock_wallet_id_14", "0xe067890123456789012345678901234567890123", 100.0))
                 user_id = (await cursor.fetchone())[0]
                 await conn.commit()
         
@@ -182,10 +182,10 @@ class TestUserManager:
         async with get_test_database_connection() as conn:
             async with conn.cursor() as cursor:
                 await cursor.execute("""
-                    INSERT INTO users (username, current_balance)
-                    VALUES (%s, %s)
+                    INSERT INTO users (username, privy_wallet_id, privy_wallet_address, current_balance)
+                    VALUES (%s, %s, %s, %s)
                     RETURNING user_id
-                """, ("test_user", 10.0))
+                """, ("test_user", "mock_wallet_id_27", "0xf090123456789012345678901234567890123456", 10.0))
                 user_id = (await cursor.fetchone())[0]
                 await conn.commit()
         
@@ -228,10 +228,10 @@ class TestUserManager:
         async with get_test_database_connection() as conn:
             async with conn.cursor() as cursor:
                 await cursor.execute("""
-                    INSERT INTO users (username, current_balance)
-                    VALUES (%s, %s)
+                    INSERT INTO users (username, privy_wallet_id, privy_wallet_address, current_balance)
+                    VALUES (%s, %s, %s, %s)
                     RETURNING user_id
-                """, ("test_user", 100.0))
+                """, ("test_user", "mock_wallet_id_15", "0xf078901234567890123456789012345678901234", 100.0))
                 user_id = (await cursor.fetchone())[0]
                 await conn.commit()
         
@@ -269,10 +269,10 @@ class TestUserManager:
         async with get_test_database_connection() as conn:
             async with conn.cursor() as cursor:
                 await cursor.execute("""
-                    INSERT INTO users (username, current_balance)
-                    VALUES (%s, %s)
+                    INSERT INTO users (username, privy_wallet_id, privy_wallet_address, current_balance)
+                    VALUES (%s, %s, %s, %s)
                     RETURNING user_id
-                """, ("test_user", 100.0))
+                """, ("test_user", "mock_wallet_id_16", "0xa089012345678901234567890123456789012345", 100.0))
                 user_id = (await cursor.fetchone())[0]
                 await conn.commit()
         
@@ -315,10 +315,10 @@ class TestUserManager:
         async with get_test_database_connection() as conn:
             async with conn.cursor() as cursor:
                 await cursor.execute("""
-                    INSERT INTO users (username, current_balance)
-                    VALUES (%s, %s)
+                    INSERT INTO users (username, privy_wallet_id, privy_wallet_address, current_balance)
+                    VALUES (%s, %s, %s, %s)
                     RETURNING user_id
-                """, ("test_user", 100.0))
+                """, ("test_user", "mock_wallet_id_17", "0xb090123456789012345678901234567890123456", 100.0))
                 user_id = (await cursor.fetchone())[0]
                 await conn.commit()
         
@@ -356,10 +356,10 @@ class TestUserManager:
         async with get_test_database_connection() as conn:
             async with conn.cursor() as cursor:
                 await cursor.execute("""
-                    INSERT INTO users (username, current_balance)
-                    VALUES (%s, %s)
+                    INSERT INTO users (username, privy_wallet_id, privy_wallet_address, current_balance)
+                    VALUES (%s, %s, %s, %s)
                     RETURNING user_id
-                """, ("test_user", 100.0))
+                """, ("test_user", "mock_wallet_id_18", "0xc001234567890123456789012345678901234567", 100.0))
                 user_id = (await cursor.fetchone())[0]
                 await conn.commit()
         
@@ -381,10 +381,10 @@ class TestUserManager:
         async with get_test_database_connection() as conn:
             async with conn.cursor() as cursor:
                 await cursor.execute("""
-                    INSERT INTO users (username, current_balance)
-                    VALUES (%s, %s)
+                    INSERT INTO users (username, privy_wallet_id, privy_wallet_address, current_balance)
+                    VALUES (%s, %s, %s, %s)
                     RETURNING user_id
-                """, ("test_user", 100.0))
+                """, ("test_user", "mock_wallet_id_19", "0xd012345678901234567890123456789012345678", 100.0))
                 user_id = (await cursor.fetchone())[0]
                 await conn.commit()
         
@@ -405,10 +405,10 @@ class TestUserManager:
         async with get_test_database_connection() as conn:
             async with conn.cursor() as cursor:
                 await cursor.execute("""
-                    INSERT INTO users (username, current_balance)
-                    VALUES (%s, %s)
+                    INSERT INTO users (username, privy_wallet_id, privy_wallet_address, current_balance)
+                    VALUES (%s, %s, %s, %s)
                     RETURNING user_id
-                """, ("test_user", 100.0))
+                """, ("test_user", "mock_wallet_id_20", "0xe023456789012345678901234567890123456789", 100.0))
                 user_id = (await cursor.fetchone())[0]
                 await conn.commit()
         
@@ -429,10 +429,10 @@ class TestUserManager:
         async with get_test_database_connection() as conn:
             async with conn.cursor() as cursor:
                 await cursor.execute("""
-                    INSERT INTO users (username, current_balance)
-                    VALUES (%s, %s)
+                    INSERT INTO users (username, privy_wallet_id, privy_wallet_address, current_balance)
+                    VALUES (%s, %s, %s, %s)
                     RETURNING user_id
-                """, ("test_user", 100.0))
+                """, ("test_user", "mock_wallet_id_21", "0xf034567890123456789012345678901234567890", 100.0))
                 user_id = (await cursor.fetchone())[0]
                 await conn.commit()
         
@@ -466,10 +466,10 @@ class TestUserManager:
         async with get_test_database_connection() as conn:
             async with conn.cursor() as cursor:
                 await cursor.execute("""
-                    INSERT INTO users (username, current_balance)
-                    VALUES (%s, %s)
+                    INSERT INTO users (username, privy_wallet_id, privy_wallet_address, current_balance)
+                    VALUES (%s, %s, %s, %s)
                     RETURNING user_id
-                """, ("test_user", 100.0))
+                """, ("test_user", "mock_wallet_id_22", "0xa045678901234567890123456789012345678901", 100.0))
                 user_id = (await cursor.fetchone())[0]
                 await conn.commit()
         
@@ -532,10 +532,10 @@ class TestUserManager:
         async with get_test_database_connection() as conn:
             async with conn.cursor() as cursor:
                 await cursor.execute("""
-                    INSERT INTO users (username, current_balance)
-                    VALUES (%s, %s)
+                    INSERT INTO users (username, privy_wallet_id, privy_wallet_address, current_balance)
+                    VALUES (%s, %s, %s, %s)
                     RETURNING user_id
-                """, ("test_user", 100.0))
+                """, ("test_user", "mock_wallet_id_23", "0xb056789012345678901234567890123456789012", 100.0))
                 user_id = (await cursor.fetchone())[0]
                 
                 session_id = str(uuid.uuid4())
@@ -597,10 +597,10 @@ class TestUserManager:
         async with get_test_database_connection() as conn:
             async with conn.cursor() as cursor:
                 await cursor.execute("""
-                    INSERT INTO users (username, current_balance)
-                    VALUES (%s, %s)
+                    INSERT INTO users (username, privy_wallet_id, privy_wallet_address, current_balance)
+                    VALUES (%s, %s, %s, %s)
                     RETURNING user_id
-                """, ("test_user", 100.0))
+                """, ("test_user", "mock_wallet_id_24", "0xc067890123456789012345678901234567890123", 100.0))
                 user_id = (await cursor.fetchone())[0]
                 
                 session_id = str(uuid.uuid4())
@@ -662,10 +662,10 @@ class TestUserManager:
         async with get_test_database_connection() as conn:
             async with conn.cursor() as cursor:
                 await cursor.execute("""
-                    INSERT INTO users (username, current_balance)
-                    VALUES (%s, %s)
+                    INSERT INTO users (username, privy_wallet_id, privy_wallet_address, current_balance)
+                    VALUES (%s, %s, %s, %s)
                     RETURNING user_id
-                """, ("test_user", 100.0))
+                """, ("test_user", "mock_wallet_id_25", "0xd078901234567890123456789012345678901234", 100.0))
                 user_id = (await cursor.fetchone())[0]
                 
                 # Create sessions that are older than the threshold
@@ -730,10 +730,10 @@ class TestUserManager:
         async with get_test_database_connection() as conn:
             async with conn.cursor() as cursor:
                 await cursor.execute("""
-                    INSERT INTO users (username, current_balance)
-                    VALUES (%s, %s)
+                    INSERT INTO users (username, privy_wallet_id, privy_wallet_address, current_balance)
+                    VALUES (%s, %s, %s, %s)
                     RETURNING user_id
-                """, ("test_user", 100.0))
+                """, ("test_user", "mock_wallet_id_26", "0xe089012345678901234567890123456789012345", 100.0))
                 user_id = (await cursor.fetchone())[0]
                 await conn.commit()
         
