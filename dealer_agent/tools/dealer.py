@@ -57,6 +57,13 @@ def get_current_user_id(tool_context: ToolContext) -> str:
     """Get user ID from tool context."""
     return tool_context.state.get("user_id")
 
+# ----- User DB Getters -----
+
+async def get_user_wallet_info(tool_context: ToolContext) -> Dict[str, Any]:
+    """Get user wallet info from tool context."""
+    user_id = get_current_user_id(tool_context)
+    return await service_manager.user_manager.get_user_wallet_info(user_id)
+
 # ----- Game Initialization -----
 
 async def initialize_game(tool_context: ToolContext = None) -> Dict[str, Any]:

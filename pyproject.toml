@@ -19,6 +19,7 @@ dependencies = [
     "privy-client>=0.5.0",
     "privy-eth-account>=0.1.0",
     "web3>=7.12.1",
+    "python-dotenv>=1.1.1",
 ]
 
 [build-system]
