@@ -5,7 +5,7 @@ Handles user creation, balance operations, and session management.
 
 import uuid
 import logging
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, Union
 from datetime import datetime, timedelta
 import psycopg
 from psycopg.rows import dict_row
@@ -328,12 +328,12 @@ class UserManager:
             logger.error(f"Failed to cleanup abandoned sessions: {e}")
             return 0
     
-    async def get_user_wallet_info(self, identifier: str) -> Dict[str, str]:
+    async def get_user_wallet_info(self, identifier: Union[str, uuid.UUID]) -> Dict[str, str]:
         """
         Get wallet information by username or user_id.
         
         Args:
-            identifier: Username or user_id
+            identifier: Username (str) or user_id (str or UUID)
             
         Returns:
             Dict: Contains 'wallet_id' and 'wallet_address'
@@ -346,23 +346,33 @@ class UserManager:
                 async with conn.cursor(row_factory=dict_row) as cursor:
                     # Try to find by username first, then by user_id
                     # Check if identifier looks like a UUID
-                    import uuid
-                    try:
-                        # Try to parse as UUID
-                        uuid.UUID(identifier)
-                        # It's a UUID, search by user_id
+                    
+                    # Handle case where identifier is already a UUID object
+                    if isinstance(identifier, uuid.UUID):
+                        # It's already a UUID object, search by user_id
                         await cursor.execute("""
                             SELECT privy_wallet_id, privy_wallet_address 
                             FROM users 
                             WHERE user_id = %s
                         """, (identifier,))
-                    except ValueError:
-                        # It's not a UUID, search by username
-                        await cursor.execute("""
-                            SELECT privy_wallet_id, privy_wallet_address 
-                            FROM users 
-                            WHERE username = %s
-                        """, (identifier,))
+                    else:
+                        # It's a string, check if it's a UUID string or username
+                        try:
+                            # Try to parse as UUID string
+                            uuid.UUID(identifier)
+                            # It's a UUID string, search by user_id
+                            await cursor.execute("""
+                                SELECT privy_wallet_id, privy_wallet_address 
+                                FROM users 
+                                WHERE user_id = %s
+                            """, (identifier,))
+                        except ValueError:
+                            # It's not a UUID string, search by username
+                            await cursor.execute("""
+                                SELECT privy_wallet_id, privy_wallet_address 
+                                FROM users 
+                                WHERE username = %s
+                            """, (identifier,))
                     
                     result = await cursor.fetchone()
                     if not result:

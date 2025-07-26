@@ -117,6 +117,25 @@ class UserWalletWrapper(WalletWrapperBase):
             
             # Send transaction via Privy SDK (unsigned, as Privy handles signing)
             try:
+                print("-"*10)
+                print({
+                    "wallet_id": wallet_id,
+                    "caip_chain_id": caip_chain_id,
+                    "method": "eth_sendTransaction",
+                    "chain_type": "ethereum",
+                    "address": user_address,
+                    "params": {
+                        "transaction": {
+                            "gas_price": 52000000000,
+                            "gas_limit": 23000,
+                            "from": user_address,
+                            "to": transaction_obj["to"],
+                            "data": transaction_obj["data"],
+                            "value": transaction_obj["value"],
+                        }
+                    }
+                })
+                print("-"*10)
                 rpc_response = await self.client.wallets.rpc(
                     wallet_id=wallet_id,
                     caip2=caip_chain_id,
@@ -125,6 +144,8 @@ class UserWalletWrapper(WalletWrapperBase):
                     address=user_address,
                     params={
                         "transaction": {
+                            "gas_price": 52000000000,
+                            "gas_limit": 23000,
                             "from": user_address,
                             "to": transaction_obj["to"],
                             "data": transaction_obj["data"],

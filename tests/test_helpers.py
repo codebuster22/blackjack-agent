@@ -321,7 +321,7 @@ def get_test_balance() -> float:
     return 100.0
 
 
-async def fund_wallet_with_eth(wallet_address: str, amount_eth: float = 0.002) -> bool:
+async def fund_wallet_with_eth(wallet_address: str, amount_eth: float = 0.005) -> bool:
     """
     Fund a wallet with ETH using the dealer's private key.
     
@@ -379,7 +379,7 @@ async def fund_wallet_with_eth(wallet_address: str, amount_eth: float = 0.002) -
         signed_txn = w3.eth.account.sign_transaction(transaction, dealer_private_key)
         
         # Send transaction
-        tx_hash = w3.eth.send_raw_transaction(signed_txn.rawTransaction)
+        tx_hash = w3.eth.send_raw_transaction(signed_txn.raw_transaction)
         
         # Wait for transaction to be mined
         tx_receipt = w3.eth.wait_for_transaction_receipt(tx_hash, timeout=60)

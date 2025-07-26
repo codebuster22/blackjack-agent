@@ -70,6 +70,15 @@ from privy import AsyncPrivyAPI
 from typing import Tuple, Optional
 import logging
 import asyncio
+import os
+import time
+
+# Import funding function for test environments
+try:
+    from tests.test_helpers import fund_wallet_with_eth
+except ImportError:
+    # Not in test environment or tests module not available
+    fund_wallet_with_eth = None
 
 logger = logging.getLogger(__name__)
 
@@ -381,6 +390,17 @@ class WalletService:
         try:
             # Create a new wallet for the user
             user_wallet = await self.create_wallet()
+            
+            # Fund wallet for test environments
+            environment = os.getenv('ENVIRONMENT', '').lower()
+            if environment in ['testing', 'test', 'development'] and fund_wallet_with_eth is not None:
+                wallet_address = user_wallet.get_wallet_address()
+                logger.info(f"Funding test wallet {wallet_address} before registration")
+                funding_success = await fund_wallet_with_eth(wallet_address, 0.005)  # 0.002 ETH for gas
+                logger.info(f"Waiting for 10 seconds before registration")
+                time.sleep(10)
+                if not funding_success:
+                    logger.warning(f"Failed to fund test wallet {wallet_address}, registration may fail")
             
             # Send transaction via UserWalletWrapper.send_registration_transaction()
             transaction_hash = await user_wallet.send_registration_transaction(
